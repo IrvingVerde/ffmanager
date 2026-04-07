@@ -41,24 +41,6 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="notas"
-        options={{
-          title: 'Notas',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="document-text" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="resumen"
-        options={{
-          title: 'Resumen',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart" size={size} color={color} />
-          ),
-        }}
-      />
     </Tabs>
   );
 }

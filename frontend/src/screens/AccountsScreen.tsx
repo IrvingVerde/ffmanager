@@ -12,22 +12,25 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { colors } from '../utils/colors';
 import { useStore } from '../store/useStore';
 import { 
   obtenerCuentas, 
   crearCuenta,
+  actualizarCuenta,
 } from '../services/api';
 import { guardarCuentaLocal, obtenerCuentasLocales } from '../services/database';
 import { Ionicons } from '@expo/vector-icons';
 import { PlataformaType, EstadoCuenta, AccountCreate } from '../types';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 
 type FilterType = 'todas' | 'disponible' | 'en_proceso' | 'correo_confirmado';
 
 export default function AccountsScreen() {
-  const { cuentas, setCuentas, agregarCuenta, isOnline } = useStore();
+  const { cuentas, setCuentas, agregarCuenta, actualizarCuentaStore, isOnline } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -45,6 +48,7 @@ export default function AccountsScreen() {
   const [region, setRegion] = useState('South America');
   const [notas, setNotas] = useState('');
   const [codigosRespaldo, setCodigosRespaldo] = useState('');
+  const [fotoBase64, setFotoBase64] = useState<string | undefined>(undefined);
   const [estados, setEstados] = useState<EstadoCuenta[]>(['Disponible']);
 
   const cargarCuentas = async () => {
@@ -52,6 +56,7 @@ export default function AccountsScreen() {
       if (isOnline) {
         const ctas = await obtenerCuentas();
         setCuentas(ctas);
+        // Guardar en local
         for (const c of ctas) {
           await guardarCuentaLocal(c);
         }
@@ -78,9 +83,35 @@ export default function AccountsScreen() {
     cargarCuentas();
   };
 
+  const pickImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert('Permiso denegado', 'Necesitas dar permiso para acceder a las fotos');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0].base64) {
+        setFotoBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      }
+    } catch (error) {
+      console.error('Error seleccionando imagen:', error);
+      Alert.alert('Error', 'No se pudo seleccionar la imagen');
+    }
+  };
+
   const handleCrearCuenta = async () => {
     if (!titulo || !email || !password) {
-      Alert.alert('Error', 'Completa los campos obligatorios (T\u00edtulo, Email, Contrase\u00f1a)');
+      Alert.alert('Error', 'Completa los campos obligatorios (Título, Email, Contraseña)');
       return;
     }
 
@@ -94,6 +125,7 @@ export default function AccountsScreen() {
         region,
         notas: notas || undefined,
         codigos_respaldo: codigosRespaldo || undefined,
+        foto_base64: fotoBase64,
         estado: estados,
       };
 
@@ -107,13 +139,14 @@ export default function AccountsScreen() {
       setPassword('');
       setNotas('');
       setCodigosRespaldo('');
+      setFotoBase64(undefined);
       setEstados(['Disponible']);
       setModalVisible(false);
       
-      Alert.alert('\u00c9xito', 'Cuenta creada correctamente');
+      Alert.alert('Éxito', 'Cuenta creada correctamente');
     } catch (error) {
       console.error('Error creando cuenta:', error);
-      Alert.alert('Error', 'No se pudo crear la cuenta');
+      Alert.alert('Error', 'No se pudo crear la cuenta. Verifica tu conexión.');
     } finally {
       setSavingAccount(false);
     }
@@ -144,7 +177,6 @@ export default function AccountsScreen() {
 
   // Filtrar cuentas
   const filteredCuentas = cuentas.filter(cuenta => {
-    // Filtro por búsqueda
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       const matchesSearch = 
@@ -155,7 +187,6 @@ export default function AccountsScreen() {
       if (!matchesSearch) return false;
     }
 
-    // Filtro por categoría
     if (activeFilter === 'todas') return true;
     if (activeFilter === 'disponible') return cuenta.estado.includes('Disponible');
     if (activeFilter === 'en_proceso') return cuenta.estado.includes('En Proceso');
@@ -277,59 +308,64 @@ export default function AccountsScreen() {
               }}
               activeOpacity={0.7}
             >
-              <View style={styles.accountHeader}>
-                <View style={[styles.platformIcon, { backgroundColor: getStatusColor(cuenta.estado) + '20' }]}>
-                  <Ionicons 
-                    name={getPlatformIcon(cuenta.plataforma as PlataformaType) as any} 
-                    size={20} 
-                    color={getStatusColor(cuenta.estado)} 
+              <View style={styles.cardContent}>
+                {/* Foto de perfil */}
+                {cuenta.foto_base64 ? (
+                  <Image 
+                    source={{ uri: cuenta.foto_base64 }} 
+                    style={styles.accountPhoto}
                   />
-                </View>
-                <View style={styles.accountHeaderText}>
-                  <Text style={styles.accountTitle}>{cuenta.titulo}</Text>
-                  <Text style={styles.accountPlatform}>{cuenta.plataforma}</Text>
-                </View>
-              </View>
+                ) : (
+                  <View style={[styles.accountPhoto, styles.accountPhotoPlaceholder]}>
+                    <Ionicons name="person" size={32} color={colors.textMuted} />
+                  </View>
+                )}
 
-              {/* Credenciales visibles */}
-              <View style={styles.credentialsSection}>
-                <View style={styles.credentialRow}>
-                  <Ionicons name="mail" size={14} color={colors.textMuted} />
-                  <Text style={styles.credentialText}>{cuenta.email}</Text>
-                </View>
-                <View style={styles.credentialRow}>
-                  <Ionicons name="key" size={14} color={colors.textMuted} />
-                  <Text style={styles.credentialText}>{cuenta.password}</Text>
-                </View>
-              </View>
+                {/* Información */}
+                <View style={styles.accountInfo}>
+                  <View style={styles.accountRow}>
+                    <Text style={styles.accountTitle} numberOfLines={1}>{cuenta.titulo}</Text>
+                    <Text style={styles.accountPlatform}>{cuenta.plataforma}</Text>
+                  </View>
 
-              {/* Estados */}
-              {cuenta.estado.length > 0 && (
-                <View style={styles.statusContainer}>
-                  {cuenta.estado.slice(0, 2).map((estado, index) => (
-                    <View 
-                      key={index} 
-                      style={[styles.statusBadge, { backgroundColor: getStatusColor(cuenta.estado) + '20' }]}
-                    >
-                      <Text style={[styles.statusText, { color: getStatusColor(cuenta.estado) }]}>
-                        {estado}
-                      </Text>
+                  <View style={styles.credentialRow}>
+                    <Ionicons name="mail" size={14} color={colors.textSecondary} />
+                    <Text style={styles.credentialText} numberOfLines={1}>{cuenta.email}</Text>
+                  </View>
+
+                  <View style={styles.credentialRow}>
+                    <Ionicons name="key" size={14} color={colors.textSecondary} />
+                    <Text style={styles.credentialText}>{cuenta.password}</Text>
+                  </View>
+
+                  {cuenta.estado.length > 0 && (
+                    <View style={styles.statusContainer}>
+                      {cuenta.estado.slice(0, 2).map((estado, index) => (
+                        <View 
+                          key={index} 
+                          style={[styles.statusBadge, { backgroundColor: getStatusColor(cuenta.estado) + '20' }]}
+                        >
+                          <Text style={[styles.statusText, { color: getStatusColor(cuenta.estado) }]}>
+                            {estado}
+                          </Text>
+                        </View>
+                      ))}
                     </View>
-                  ))}
+                  )}
                 </View>
-              )}
+              </View>
             </TouchableOpacity>
           ))
         ) : (
           <View style={styles.emptyContainer}>
             <Ionicons name="game-controller-outline" size={64} color={colors.textMuted} />
             <Text style={styles.emptyText}>No hay cuentas</Text>
-            <Text style={styles.emptySubtext}>Presiona el bot\u00f3n + para agregar una</Text>
+            <Text style={styles.emptySubtext}>Presiona el botón + para agregar una</Text>
           </View>
         )}
       </ScrollView>
 
-      {/* Bot\u00f3n flotante */}
+      {/* Botón flotante */}
       <TouchableOpacity 
         style={styles.fab}
         onPress={() => setModalVisible(true)}
@@ -337,7 +373,7 @@ export default function AccountsScreen() {
         <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Modal para crear cuenta - Parte 1*/}
+      {/* Modal para crear cuenta */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -357,7 +393,20 @@ export default function AccountsScreen() {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.label}>T\u00edtulo *</Text>
+              {/* Foto */}
+              <Text style={styles.label}>Foto de la Cuenta</Text>
+              <TouchableOpacity style={styles.photoSelector} onPress={pickImage}>
+                {fotoBase64 ? (
+                  <Image source={{ uri: fotoBase64 }} style={styles.photoPreview} />
+                ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Ionicons name="camera" size={32} color={colors.textMuted} />
+                    <Text style={styles.photoPlaceholderText}>Seleccionar foto</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <Text style={styles.label}>Título *</Text>
               <TextInput
                 style={styles.input}
                 value={titulo}
@@ -394,27 +443,27 @@ export default function AccountsScreen() {
                 autoCapitalize="none"
               />
 
-              <Text style={styles.label}>Contrase\u00f1a *</Text>
+              <Text style={styles.label}>Contraseña *</Text>
               <TextInput
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                placeholder="••••••••"
                 placeholderTextColor={colors.textMuted}
               />
 
-              <Text style={styles.label}>C\u00f3digos de Respaldo</Text>
+              <Text style={styles.label}>Códigos de Respaldo</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={codigosRespaldo}
                 onChangeText={setCodigosRespaldo}
-                placeholder="C\u00f3digos de recuperaci\u00f3n..."
+                placeholder="Códigos de recuperación..."
                 placeholderTextColor={colors.textMuted}
                 multiline
                 numberOfLines={2}
               />
 
-              <Text style={styles.label}>Regi\u00f3n</Text>
+              <Text style={styles.label}>Región</Text>
               <View style={styles.regionContainer}>
                 <TouchableOpacity
                   style={[styles.regionButton, region === 'USA' && styles.regionButtonActive]}
@@ -429,7 +478,7 @@ export default function AccountsScreen() {
                   onPress={() => setRegion('South America')}
                 >
                   <Text style={[styles.regionText, region === 'South America' && styles.regionTextActive]}>
-                    Sudam\u00e9rica
+                    Sudamérica
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -460,7 +509,7 @@ export default function AccountsScreen() {
                 style={[styles.input, styles.textArea]}
                 value={notas}
                 onChangeText={setNotas}
-                placeholder="Informaci\u00f3n adicional..."
+                placeholder="Información adicional..."
                 placeholderTextColor={colors.textMuted}
                 multiline
                 numberOfLines={3}
@@ -480,27 +529,41 @@ export default function AccountsScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Modal de detalle de cuenta */}
+      {/* Modal de vista previa grande */}
       <Modal
         visible={detailModalVisible}
-        animationType="slide"
+        animationType="fade"
         transparent={true}
         onRequestClose={() => setDetailModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Detalle de Cuenta</Text>
-              <TouchableOpacity onPress={() => setDetailModalVisible(false)}>
-                <Ionicons name="close" size={28} color={colors.text} />
-              </TouchableOpacity>
-            </View>
+        <View style={styles.detailModalContainer}>
+          <TouchableOpacity 
+            style={styles.closeDetailButton}
+            onPress={() => setDetailModalVisible(false)}
+          >
+            <Ionicons name="close-circle" size={40} color="#FFFFFF" />
+          </TouchableOpacity>
 
-            {selectedAccount && (
-              <ScrollView>
+          {selectedAccount && (
+            <ScrollView style={styles.detailContent} contentContainerStyle={styles.detailContentScroll}>
+              {/* Foto grande */}
+              {selectedAccount.foto_base64 ? (
+                <Image 
+                  source={{ uri: selectedAccount.foto_base64 }} 
+                  style={styles.detailPhoto}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.detailPhoto, styles.detailPhotoPlaceholder]}>
+                  <Ionicons name="person" size={80} color={colors.textMuted} />
+                </View>
+              )}
+
+              <View style={styles.detailInfoContainer}>
                 <Text style={styles.detailTitle}>{selectedAccount.titulo}</Text>
-                
-                {/* Credenciales - DESTACADAS */}
+                <Text style={styles.detailPlatform}>{selectedAccount.plataforma}</Text>
+
+                {/* Credenciales destacadas */}
                 <View style={styles.credentialsCard}>
                   <Text style={styles.credentialsTitle}>CREDENCIALES</Text>
                   
@@ -519,11 +582,11 @@ export default function AccountsScreen() {
 
                   <View style={styles.credentialDetailRow}>
                     <View style={styles.credentialInfo}>
-                      <Text style={styles.credentialLabel}>Contrase\u00f1a</Text>
+                      <Text style={styles.credentialLabel}>Contraseña</Text>
                       <Text style={styles.credentialValue}>{selectedAccount.password}</Text>
                     </View>
                     <TouchableOpacity 
-                      onPress={() => copyToClipboard(selectedAccount.password, 'Contrase\u00f1a')}
+                      onPress={() => copyToClipboard(selectedAccount.password, 'Contraseña')}
                       style={styles.copyButton}
                     >
                       <Ionicons name="copy-outline" size={20} color={colors.primary} />
@@ -533,11 +596,11 @@ export default function AccountsScreen() {
                   {selectedAccount.codigos_respaldo && (
                     <View style={styles.credentialDetailRow}>
                       <View style={styles.credentialInfo}>
-                        <Text style={styles.credentialLabel}>C\u00f3digos de Respaldo</Text>
+                        <Text style={styles.credentialLabel}>Códigos de Respaldo</Text>
                         <Text style={styles.credentialValue}>{selectedAccount.codigos_respaldo}</Text>
                       </View>
                       <TouchableOpacity 
-                        onPress={() => copyToClipboard(selectedAccount.codigos_respaldo, 'C\u00f3digos')}
+                        onPress={() => copyToClipboard(selectedAccount.codigos_respaldo, 'Códigos')}
                         style={styles.copyButton}
                       >
                         <Ionicons name="copy-outline" size={20} color={colors.primary} />
@@ -546,14 +609,9 @@ export default function AccountsScreen() {
                   )}
                 </View>
 
-                {/* Informaci\u00f3n adicional */}
+                {/* Información adicional */}
                 <View style={styles.infoSection}>
-                  <Text style={styles.infoLabel}>Plataforma</Text>
-                  <Text style={styles.infoValue}>{selectedAccount.plataforma}</Text>
-                </View>
-
-                <View style={styles.infoSection}>
-                  <Text style={styles.infoLabel}>Regi\u00f3n</Text>
+                  <Text style={styles.infoLabel}>Región</Text>
                   <Text style={styles.infoValue}>{selectedAccount.region}</Text>
                 </View>
 
@@ -576,9 +634,9 @@ export default function AccountsScreen() {
                     <Text style={styles.infoValue}>{selectedAccount.notas}</Text>
                   </View>
                 )}
-              </ScrollView>
-            )}
-          </View>
+              </View>
+            </ScrollView>
+          )}
         </View>
       </Modal>
     </View>
@@ -656,52 +714,53 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
+    paddingBottom: 100,
   },
   accountCard: {
     backgroundColor: colors.backgroundCard,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
   },
-  accountHeader: {
+  cardContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    gap: 12,
   },
-  platformIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  accountPhoto: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  accountPhotoPlaceholder: {
+    backgroundColor: colors.chipInactive,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
-  accountHeaderText: {
+  accountInfo: {
     flex: 1,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   accountTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+    flex: 1,
   },
   accountPlatform: {
     fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
-  },
-  credentialsSection: {
-    gap: 8,
-    marginBottom: 12,
+    marginLeft: 8,
   },
   credentialRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginBottom: 6,
   },
   credentialText: {
     fontSize: 13,
@@ -712,6 +771,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+    marginTop: 8,
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -789,6 +849,29 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 8,
     marginTop: 16,
+  },
+  photoSelector: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  photoPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  photoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: colors.chipInactive,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoPlaceholderText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: colors.textMuted,
   },
   input: {
     backgroundColor: colors.background,
@@ -886,14 +969,48 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+  detailModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+  },
+  closeDetailButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+  },
+  detailContent: {
+    flex: 1,
+    marginTop: 100,
+  },
+  detailContentScroll: {
+    paddingBottom: 40,
+  },
+  detailPhoto: {
+    width: '100%',
+    height: 300,
+  },
+  detailPhotoPlaceholder: {
+    backgroundColor: colors.chipInactive,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailInfoContainer: {
+    padding: 24,
+  },
   detailTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 20,
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  detailPlatform: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginBottom: 24,
   },
   credentialsCard: {
-    backgroundColor: colors.primary + '15',
+    backgroundColor: colors.primary + '25',
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
@@ -924,7 +1041,7 @@ const styles = StyleSheet.create({
   credentialValue: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.text,
+    color: '#FFFFFF',
   },
   copyButton: {
     backgroundColor: colors.backgroundCard,
@@ -941,7 +1058,7 @@ const styles = StyleSheet.create({
   },
   infoValue: {
     fontSize: 16,
-    color: colors.text,
+    color: '#FFFFFF',
   },
   estadosRow: {
     flexDirection: 'row',

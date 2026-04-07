@@ -43,6 +43,7 @@ export interface Account {
   email: string;
   password: string;
   codigos_respaldo?: string;
+  foto_base64?: string;
   estado: EstadoCuenta[];
   region: string;
   notas?: string;
@@ -59,6 +60,7 @@ export interface AccountCreate {
   email: string;
   password: string;
   codigos_respaldo?: string;
+  foto_base64?: string;
   estado: EstadoCuenta[];
   region: string;
   notas?: string;
