@@ -27,25 +27,20 @@ import { PlataformaType, EstadoCuenta, AccountCreate } from '../types';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 
-type FilterType = 'todas' | 'disponible' | 'en_proceso' | 'correo_confirmado';
-
 export default function AccountsScreen() {
   const { cuentas, setCuentas, agregarCuenta, actualizarCuentaStore, isOnline } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [selectedAccount, setSelectedAccount] = useState<any>(null);
   const [savingAccount, setSavingAccount] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('todas');
-  const [searchQuery, setSearchQuery] = useState('');
   
   // Form state
   const [titulo, setTitulo] = useState('');
   const [plataforma, setPlataforma] = useState<PlataformaType>('Facebook');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [region, setRegion] = useState('South America');
+  const [region, setRegion] = useState('SUR');
   const [notas, setNotas] = useState('');
   const [codigosRespaldo, setCodigosRespaldo] = useState('');
   const [fotoBase64, setFotoBase64] = useState<string | undefined>(undefined);
@@ -196,6 +191,7 @@ export default function AccountsScreen() {
     setFotoBase64(undefined);
     setPrecioCompra('');
     setPrecioVenta('');
+    setRegion('SUR');
     setEstados(['Disponible']);
     setEditingId(null);
   };
@@ -216,11 +212,6 @@ export default function AccountsScreen() {
     setEditModalVisible(true);
   };
 
-  const copyToClipboard = async (text: string, label: string) => {
-    await Clipboard.setStringAsync(text);
-    Alert.alert('Copiado', `${label} copiado`);
-  };
-
   const toggleEstado = (estado: EstadoCuenta) => {
     if (estados.includes(estado)) {
       setEstados(estados.filter(e => e !== estado));
@@ -230,6 +221,7 @@ export default function AccountsScreen() {
   };
 
   const plataformas: PlataformaType[] = ['Facebook', 'Google', 'VK', 'Twitter', 'Otro'];
+  const regiones = ['SUR', 'EEUU', 'NORTE', 'BRASIL', 'EUROPA', 'OTROS'];
   const estadosDisponibles: EstadoCuenta[] = [
     'Disponible',
     'Reservada',
@@ -238,25 +230,6 @@ export default function AccountsScreen() {
     'Email Confirmado',
     'Email Perdido',
   ];
-
-  const filteredCuentas = cuentas.filter(cuenta => {
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const matchesSearch = 
-        cuenta.titulo.toLowerCase().includes(query) ||
-        cuenta.email.toLowerCase().includes(query) ||
-        (cuenta.notas && cuenta.notas.toLowerCase().includes(query));
-      
-      if (!matchesSearch) return false;
-    }
-
-    if (activeFilter === 'todas') return true;
-    if (activeFilter === 'disponible') return cuenta.estado.includes('Disponible');
-    if (activeFilter === 'en_proceso') return cuenta.estado.includes('En Proceso');
-    if (activeFilter === 'correo_confirmado') return cuenta.estado.includes('Email Confirmado');
-    
-    return true;
-  });
 
   const getStatusColor = (estados: EstadoCuenta[]) => {
     if (estados.includes('Vendida')) return colors.error;
@@ -290,7 +263,6 @@ export default function AccountsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Foto */}
         <TouchableOpacity style={styles.photoSelector} onPress={pickImage}>
           {fotoBase64 ? (
             <Image source={{ uri: fotoBase64 }} style={styles.photoPreview} />
@@ -380,20 +352,19 @@ export default function AccountsScreen() {
         </ScrollView>
 
         <Text style={styles.label}>Región</Text>
-        <View style={styles.regionContainer}>
-          <TouchableOpacity
-            style={[styles.regionButton, region === 'USA' && styles.regionButtonActive]}
-            onPress={() => setRegion('USA')}
-          >
-            <Text style={[styles.regionText, region === 'USA' && styles.regionTextActive]}>USA</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.regionButton, region === 'South America' && styles.regionButtonActive]}
-            onPress={() => setRegion('South America')}
-          >
-            <Text style={[styles.regionText, region === 'South America' && styles.regionTextActive]}>Sudamérica</Text>
-          </TouchableOpacity>
-        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.regionContainer}>
+            {regiones.map((r) => (
+              <TouchableOpacity
+                key={r}
+                style={[styles.regionButton, region === r && styles.regionButtonActive]}
+                onPress={() => setRegion(r)}
+              >
+                <Text style={[styles.regionText, region === r && styles.regionTextActive]}>{r}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
 
         <Text style={styles.label}>Estados</Text>
         <View style={styles.estadosContainer}>
@@ -440,48 +411,13 @@ export default function AccountsScreen() {
         <Text style={styles.title}>Inventario</Text>
       </View>
 
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color={colors.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar..."
-            placeholderTextColor={colors.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-      </View>
-
-      {/* Filtros más pequeños */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
-        <View style={styles.filtersContainer}>
-          {[
-            { key: 'todas' as FilterType, label: 'Todas' },
-            { key: 'disponible' as FilterType, label: 'Disponible' },
-            { key: 'en_proceso' as FilterType, label: 'En proceso' },
-            { key: 'correo_confirmado' as FilterType, label: 'Confirmado' },
-          ].map((filter) => (
-            <TouchableOpacity
-              key={filter.key}
-              style={[styles.filterChip, activeFilter === filter.key && styles.filterChipActive]}
-              onPress={() => setActiveFilter(filter.key)}
-            >
-              <Text style={[styles.filterText, activeFilter === filter.key && styles.filterTextActive]}>
-                {filter.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        {filteredCuentas.length > 0 ? (
-          filteredCuentas.map((cuenta) => {
+        {cuentas.length > 0 ? (
+          cuentas.map((cuenta) => {
             const ganancia = calcularGanancia(cuenta.precio_compra || 0, cuenta.precio_venta || 0);
             return (
               <TouchableOpacity 
@@ -500,7 +436,12 @@ export default function AccountsScreen() {
                   )}
 
                   <View style={styles.accountInfo}>
-                    <Text style={styles.accountTitle} numberOfLines={1}>{cuenta.titulo}</Text>
+                    <View style={styles.titleRow}>
+                      <Text style={styles.accountTitle} numberOfLines={1}>{cuenta.titulo}</Text>
+                      <View style={styles.regionBadge}>
+                        <Text style={styles.regionText}>{cuenta.region}</Text>
+                      </View>
+                    </View>
                     <Text style={styles.accountEmail} numberOfLines={1}>{cuenta.email}</Text>
                     
                     <View style={styles.pricesRow}>
@@ -549,23 +490,17 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   header: { backgroundColor: colors.primary, padding: 20, paddingTop: 60, paddingBottom: 20 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#FFFFFF' },
-  searchContainer: { padding: 12, backgroundColor: colors.background },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.backgroundCard, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
-  searchInput: { flex: 1, fontSize: 14, color: colors.text },
-  filtersScroll: { paddingHorizontal: 12, marginBottom: 4 },
-  filtersContainer: { flexDirection: 'row', gap: 6, paddingBottom: 4 },
-  filterChip: { backgroundColor: colors.chipInactive, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
-  filterChipActive: { backgroundColor: colors.chipActive },
-  filterText: { fontSize: 11, fontWeight: '600', color: colors.chipTextInactive },
-  filterTextActive: { color: colors.chipTextActive },
   scrollView: { flex: 1 },
-  listContent: { padding: 12, paddingBottom: 100 },
-  accountCard: { backgroundColor: colors.backgroundCard, borderRadius: 12, padding: 12, marginBottom: 10 },
+  listContent: { padding: 16, paddingTop: 20, paddingBottom: 100 },
+  accountCard: { backgroundColor: colors.backgroundCard, borderRadius: 12, padding: 12, marginBottom: 12 },
   cardContent: { flexDirection: 'row', gap: 12 },
   accountPhoto: { width: 70, height: 70, borderRadius: 35 },
   accountPhotoPlaceholder: { backgroundColor: colors.chipInactive, alignItems: 'center', justifyContent: 'center' },
   accountInfo: { flex: 1 },
-  accountTitle: { fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  accountTitle: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1, marginRight: 8 },
+  regionBadge: { backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  regionText: { fontSize: 10, fontWeight: 'bold', color: '#FFFFFF' },
   accountEmail: { fontSize: 13, color: colors.textSecondary, marginBottom: 6 },
   pricesRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
   priceLabel: { fontSize: 11, color: colors.textMuted },
@@ -574,7 +509,7 @@ const styles = StyleSheet.create({
   ganancia: { fontSize: 13, fontWeight: 'bold', marginTop: 2 },
   gananciaPositiva: { color: colors.success },
   gananciaNegativa: { color: colors.error },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 60 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 80 },
   emptyText: { fontSize: 18, fontWeight: '600', color: colors.text, marginTop: 16 },
   emptySubtext: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
   fab: { position: 'absolute', right: 20, bottom: 80, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 6 },
@@ -590,16 +525,14 @@ const styles = StyleSheet.create({
   photoPlaceholderText: { marginTop: 8, fontSize: 13, color: colors.textMuted },
   input: { backgroundColor: colors.background, borderRadius: 10, padding: 12, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border },
   textArea: { minHeight: 70, textAlignVertical: 'top' },
-  plataformaContainer: { flexDirection: 'row', gap: 8 },
+  plataformaContainer: { flexDirection: 'row', gap: 8, paddingBottom: 8 },
   plataformaButton: { backgroundColor: colors.chipInactive, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
   plataformaButtonActive: { backgroundColor: colors.primary },
   plataformaText: { fontSize: 13, fontWeight: '600', color: colors.chipTextInactive },
   plataformaTextActive: { color: colors.chipTextActive },
-  regionContainer: { flexDirection: 'row', gap: 8 },
-  regionButton: { flex: 1, backgroundColor: colors.chipInactive, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+  regionContainer: { flexDirection: 'row', gap: 8, paddingBottom: 8 },
+  regionButton: { backgroundColor: colors.chipInactive, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   regionButtonActive: { backgroundColor: colors.primary },
-  regionText: { fontSize: 13, fontWeight: '600', color: colors.chipTextInactive },
-  regionTextActive: { color: colors.chipTextActive },
   estadosContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   estadoChip: { backgroundColor: colors.chipInactive, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   estadoChipActive: { backgroundColor: colors.primary },

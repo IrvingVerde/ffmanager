@@ -82,8 +82,8 @@ class Account(BaseModel):
     password: str
     codigos_respaldo: Optional[str] = None
     foto_base64: Optional[str] = None
-    precio_compra: float
-    precio_venta: float
+    precio_compra: float = 0.0
+    precio_venta: float = 0.0
     estado: List[str]
     region: str
     notas: Optional[str] = None
