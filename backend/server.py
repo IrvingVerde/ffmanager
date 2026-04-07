@@ -65,6 +65,8 @@ class AccountCreate(BaseModel):
     password: str
     codigos_respaldo: Optional[str] = None
     foto_base64: Optional[str] = None  # Foto en base64
+    precio_compra: float = 0.0
+    precio_venta: float = 0.0
     estado: List[str] = []  # ["Email Confirmado", "Email Perdido", "En Proceso", "Vendida", "Disponible", "Reservada"]
     region: str = "USA"  # USA, South America, o custom
     notas: Optional[str] = None
@@ -80,6 +82,8 @@ class Account(BaseModel):
     password: str
     codigos_respaldo: Optional[str] = None
     foto_base64: Optional[str] = None
+    precio_compra: float
+    precio_venta: float
     estado: List[str]
     region: str
     notas: Optional[str] = None

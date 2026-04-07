@@ -34,7 +34,7 @@ export default function AccountsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
-  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<any>(null);
   const [savingAccount, setSavingAccount] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('todas');
@@ -49,14 +49,16 @@ export default function AccountsScreen() {
   const [notas, setNotas] = useState('');
   const [codigosRespaldo, setCodigosRespaldo] = useState('');
   const [fotoBase64, setFotoBase64] = useState<string | undefined>(undefined);
+  const [precioCompra, setPrecioCompra] = useState('');
+  const [precioVenta, setPrecioVenta] = useState('');
   const [estados, setEstados] = useState<EstadoCuenta[]>(['Disponible']);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const cargarCuentas = async () => {
     try {
       if (isOnline) {
         const ctas = await obtenerCuentas();
         setCuentas(ctas);
-        // Guardar en local
         for (const c of ctas) {
           await guardarCuentaLocal(c);
         }
@@ -126,6 +128,8 @@ export default function AccountsScreen() {
         notas: notas || undefined,
         codigos_respaldo: codigosRespaldo || undefined,
         foto_base64: fotoBase64,
+        precio_compra: parseFloat(precioCompra) || 0,
+        precio_venta: parseFloat(precioVenta) || 0,
         estado: estados,
       };
 
@@ -133,28 +137,88 @@ export default function AccountsScreen() {
       agregarCuenta(cuentaCreada);
       await guardarCuentaLocal(cuentaCreada);
       
-      // Resetear form
-      setTitulo('');
-      setEmail('');
-      setPassword('');
-      setNotas('');
-      setCodigosRespaldo('');
-      setFotoBase64(undefined);
-      setEstados(['Disponible']);
+      resetForm();
       setModalVisible(false);
       
       Alert.alert('Éxito', 'Cuenta creada correctamente');
     } catch (error) {
       console.error('Error creando cuenta:', error);
-      Alert.alert('Error', 'No se pudo crear la cuenta. Verifica tu conexión.');
+      Alert.alert('Error', 'No se pudo crear la cuenta');
     } finally {
       setSavingAccount(false);
     }
   };
 
+  const handleActualizarCuenta = async () => {
+    if (!editingId || !titulo || !email || !password) {
+      Alert.alert('Error', 'Completa los campos obligatorios');
+      return;
+    }
+
+    setSavingAccount(true);
+    try {
+      const cuentaActualizada: AccountCreate = {
+        titulo,
+        plataforma,
+        email,
+        password,
+        region,
+        notas: notas || undefined,
+        codigos_respaldo: codigosRespaldo || undefined,
+        foto_base64: fotoBase64,
+        precio_compra: parseFloat(precioCompra) || 0,
+        precio_venta: parseFloat(precioVenta) || 0,
+        estado: estados,
+      };
+
+      const resultado = await actualizarCuenta(editingId, cuentaActualizada);
+      actualizarCuentaStore(editingId, resultado);
+      await guardarCuentaLocal(resultado);
+      
+      resetForm();
+      setEditModalVisible(false);
+      
+      Alert.alert('Éxito', 'Cuenta actualizada correctamente');
+    } catch (error) {
+      console.error('Error actualizando cuenta:', error);
+      Alert.alert('Error', 'No se pudo actualizar la cuenta');
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const resetForm = () => {
+    setTitulo('');
+    setEmail('');
+    setPassword('');
+    setNotas('');
+    setCodigosRespaldo('');
+    setFotoBase64(undefined);
+    setPrecioCompra('');
+    setPrecioVenta('');
+    setEstados(['Disponible']);
+    setEditingId(null);
+  };
+
+  const abrirEdicion = (cuenta: any) => {
+    setEditingId(cuenta.id);
+    setTitulo(cuenta.titulo);
+    setPlataforma(cuenta.plataforma);
+    setEmail(cuenta.email);
+    setPassword(cuenta.password);
+    setRegion(cuenta.region);
+    setNotas(cuenta.notas || '');
+    setCodigosRespaldo(cuenta.codigos_respaldo || '');
+    setFotoBase64(cuenta.foto_base64);
+    setPrecioCompra(cuenta.precio_compra?.toString() || '0');
+    setPrecioVenta(cuenta.precio_venta?.toString() || '0');
+    setEstados(cuenta.estado);
+    setEditModalVisible(true);
+  };
+
   const copyToClipboard = async (text: string, label: string) => {
     await Clipboard.setStringAsync(text);
-    Alert.alert('Copiado', `${label} copiado al portapapeles`);
+    Alert.alert('Copiado', `${label} copiado`);
   };
 
   const toggleEstado = (estado: EstadoCuenta) => {
@@ -175,7 +239,6 @@ export default function AccountsScreen() {
     'Email Perdido',
   ];
 
-  // Filtrar cuentas
   const filteredCuentas = cuentas.filter(cuenta => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -202,17 +265,8 @@ export default function AccountsScreen() {
     return colors.info;
   };
 
-  const getPlatformIcon = (plataforma: PlataformaType) => {
-    switch (plataforma) {
-      case 'Facebook':
-        return 'logo-facebook';
-      case 'Google':
-        return 'logo-google';
-      case 'Twitter':
-        return 'logo-twitter';
-      default:
-        return 'game-controller';
-    }
+  const calcularGanancia = (compra: number, venta: number) => {
+    return venta - compra;
   };
 
   if (loading) {
@@ -223,17 +277,172 @@ export default function AccountsScreen() {
     );
   }
 
+  const renderFormulario = (esEdicion: boolean) => (
+    <ScrollView style={styles.modalScrollView}>
+      <View style={styles.modalContent}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>{esEdicion ? 'Editar Cuenta' : 'Nueva Cuenta'}</Text>
+          <TouchableOpacity onPress={() => {
+            esEdicion ? setEditModalVisible(false) : setModalVisible(false);
+            resetForm();
+          }}>
+            <Ionicons name="close" size={28} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Foto */}
+        <TouchableOpacity style={styles.photoSelector} onPress={pickImage}>
+          {fotoBase64 ? (
+            <Image source={{ uri: fotoBase64 }} style={styles.photoPreview} />
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <Ionicons name="camera" size={32} color={colors.textMuted} />
+              <Text style={styles.photoPlaceholderText}>Seleccionar foto</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <Text style={styles.label}>Título *</Text>
+        <TextInput
+          style={styles.input}
+          value={titulo}
+          onChangeText={setTitulo}
+          placeholder="Ej: Cuenta FF #1"
+          placeholderTextColor={colors.textMuted}
+        />
+
+        <Text style={styles.label}>Email *</Text>
+        <TextInput
+          style={styles.input}
+          value={email}
+          onChangeText={setEmail}
+          placeholder="correo@ejemplo.com"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+
+        <Text style={styles.label}>Contraseña *</Text>
+        <TextInput
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="••••••••"
+          placeholderTextColor={colors.textMuted}
+        />
+
+        <Text style={styles.label}>Precio de Compra (S/)</Text>
+        <TextInput
+          style={styles.input}
+          value={precioCompra}
+          onChangeText={setPrecioCompra}
+          placeholder="0.00"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="decimal-pad"
+        />
+
+        <Text style={styles.label}>Precio de Venta (S/)</Text>
+        <TextInput
+          style={styles.input}
+          value={precioVenta}
+          onChangeText={setPrecioVenta}
+          placeholder="0.00"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="decimal-pad"
+        />
+
+        <Text style={styles.label}>Códigos de Respaldo</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={codigosRespaldo}
+          onChangeText={setCodigosRespaldo}
+          placeholder="Códigos..."
+          placeholderTextColor={colors.textMuted}
+          multiline
+          numberOfLines={2}
+        />
+
+        <Text style={styles.label}>Plataforma</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.plataformaContainer}>
+            {plataformas.map((p) => (
+              <TouchableOpacity
+                key={p}
+                style={[styles.plataformaButton, plataforma === p && styles.plataformaButtonActive]}
+                onPress={() => setPlataforma(p)}
+              >
+                <Text style={[styles.plataformaText, plataforma === p && styles.plataformaTextActive]}>
+                  {p}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+
+        <Text style={styles.label}>Región</Text>
+        <View style={styles.regionContainer}>
+          <TouchableOpacity
+            style={[styles.regionButton, region === 'USA' && styles.regionButtonActive]}
+            onPress={() => setRegion('USA')}
+          >
+            <Text style={[styles.regionText, region === 'USA' && styles.regionTextActive]}>USA</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.regionButton, region === 'South America' && styles.regionButtonActive]}
+            onPress={() => setRegion('South America')}
+          >
+            <Text style={[styles.regionText, region === 'South America' && styles.regionTextActive]}>Sudamérica</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.label}>Estados</Text>
+        <View style={styles.estadosContainer}>
+          {estadosDisponibles.map((estado) => (
+            <TouchableOpacity
+              key={estado}
+              style={[styles.estadoChip, estados.includes(estado) && styles.estadoChipActive]}
+              onPress={() => toggleEstado(estado)}
+            >
+              <Text style={[styles.estadoChipText, estados.includes(estado) && styles.estadoChipTextActive]}>
+                {estado}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Notas</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={notas}
+          onChangeText={setNotas}
+          placeholder="Información adicional..."
+          placeholderTextColor={colors.textMuted}
+          multiline
+          numberOfLines={3}
+        />
+
+        <TouchableOpacity
+          style={[styles.saveButton, savingAccount && styles.saveButtonDisabled]}
+          onPress={esEdicion ? handleActualizarCuenta : handleCrearCuenta}
+          disabled={savingAccount}
+        >
+          <Text style={styles.saveButtonText}>
+            {savingAccount ? 'Guardando...' : esEdicion ? 'Actualizar' : 'Guardar'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Inventario</Text>
       </View>
 
-      {/* Búsqueda */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color={colors.textMuted} />
+          <Ionicons name="search" size={18} color={colors.textMuted} />
           <TextInput
             style={styles.searchInput}
             placeholder="Buscar..."
@@ -244,836 +453,159 @@ export default function AccountsScreen() {
         </View>
       </View>
 
-      {/* Filtros */}
+      {/* Filtros más pequeños */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
         <View style={styles.filtersContainer}>
-          <TouchableOpacity
-            style={[styles.filterChip, activeFilter === 'todas' && styles.filterChipActive]}
-            onPress={() => setActiveFilter('todas')}
-          >
-            <Text style={[styles.filterText, activeFilter === 'todas' && styles.filterTextActive]}>
-              Todas
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterChip, activeFilter === 'disponible' && styles.filterChipActive]}
-            onPress={() => setActiveFilter('disponible')}
-          >
-            <Text style={[styles.filterText, activeFilter === 'disponible' && styles.filterTextActive]}>
-              Disponible
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterChip, activeFilter === 'en_proceso' && styles.filterChipActive]}
-            onPress={() => setActiveFilter('en_proceso')}
-          >
-            <Text style={[styles.filterText, activeFilter === 'en_proceso' && styles.filterTextActive]}>
-              En proceso
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterChip, activeFilter === 'correo_confirmado' && styles.filterChipActive]}
-            onPress={() => setActiveFilter('correo_confirmado')}
-          >
-            <Text style={[styles.filterText, activeFilter === 'correo_confirmado' && styles.filterTextActive]}>
-              Correo confirmado
-            </Text>
-          </TouchableOpacity>
+          {[
+            { key: 'todas' as FilterType, label: 'Todas' },
+            { key: 'disponible' as FilterType, label: 'Disponible' },
+            { key: 'en_proceso' as FilterType, label: 'En proceso' },
+            { key: 'correo_confirmado' as FilterType, label: 'Confirmado' },
+          ].map((filter) => (
+            <TouchableOpacity
+              key={filter.key}
+              style={[styles.filterChip, activeFilter === filter.key && styles.filterChipActive]}
+              onPress={() => setActiveFilter(filter.key)}
+            >
+              <Text style={[styles.filterText, activeFilter === filter.key && styles.filterTextActive]}>
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </ScrollView>
 
-      {/* Lista de cuentas */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {filteredCuentas.length > 0 ? (
-          filteredCuentas.map((cuenta) => (
-            <TouchableOpacity 
-              key={cuenta.id}
-              style={styles.accountCard}
-              onPress={() => {
-                setSelectedAccount(cuenta);
-                setDetailModalVisible(true);
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.cardContent}>
-                {/* Foto de perfil */}
-                {cuenta.foto_base64 ? (
-                  <Image 
-                    source={{ uri: cuenta.foto_base64 }} 
-                    style={styles.accountPhoto}
-                  />
-                ) : (
-                  <View style={[styles.accountPhoto, styles.accountPhotoPlaceholder]}>
-                    <Ionicons name="person" size={32} color={colors.textMuted} />
-                  </View>
-                )}
-
-                {/* Información */}
-                <View style={styles.accountInfo}>
-                  <View style={styles.accountRow}>
-                    <Text style={styles.accountTitle} numberOfLines={1}>{cuenta.titulo}</Text>
-                    <Text style={styles.accountPlatform}>{cuenta.plataforma}</Text>
-                  </View>
-
-                  <View style={styles.credentialRow}>
-                    <Ionicons name="mail" size={14} color={colors.textSecondary} />
-                    <Text style={styles.credentialText} numberOfLines={1}>{cuenta.email}</Text>
-                  </View>
-
-                  <View style={styles.credentialRow}>
-                    <Ionicons name="key" size={14} color={colors.textSecondary} />
-                    <Text style={styles.credentialText}>{cuenta.password}</Text>
-                  </View>
-
-                  {cuenta.estado.length > 0 && (
-                    <View style={styles.statusContainer}>
-                      {cuenta.estado.slice(0, 2).map((estado, index) => (
-                        <View 
-                          key={index} 
-                          style={[styles.statusBadge, { backgroundColor: getStatusColor(cuenta.estado) + '20' }]}
-                        >
-                          <Text style={[styles.statusText, { color: getStatusColor(cuenta.estado) }]}>
-                            {estado}
-                          </Text>
-                        </View>
-                      ))}
+          filteredCuentas.map((cuenta) => {
+            const ganancia = calcularGanancia(cuenta.precio_compra || 0, cuenta.precio_venta || 0);
+            return (
+              <TouchableOpacity 
+                key={cuenta.id}
+                style={styles.accountCard}
+                onPress={() => abrirEdicion(cuenta)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cardContent}>
+                  {cuenta.foto_base64 ? (
+                    <Image source={{ uri: cuenta.foto_base64 }} style={styles.accountPhoto} />
+                  ) : (
+                    <View style={[styles.accountPhoto, styles.accountPhotoPlaceholder]}>
+                      <Ionicons name="person" size={24} color={colors.textMuted} />
                     </View>
                   )}
+
+                  <View style={styles.accountInfo}>
+                    <Text style={styles.accountTitle} numberOfLines={1}>{cuenta.titulo}</Text>
+                    <Text style={styles.accountEmail} numberOfLines={1}>{cuenta.email}</Text>
+                    
+                    <View style={styles.pricesRow}>
+                      <Text style={styles.priceLabel}>Compra: <Text style={styles.priceValue}>S/ {cuenta.precio_compra?.toFixed(2) || '0.00'}</Text></Text>
+                      <Text style={styles.priceLabel}>Venta: <Text style={styles.priceValueVenta}>S/ {cuenta.precio_venta?.toFixed(2) || '0.00'}</Text></Text>
+                    </View>
+                    
+                    <Text style={[styles.ganancia, ganancia >= 0 ? styles.gananciaPositiva : styles.gananciaNegativa]}>
+                      Ganancia: S/ {ganancia.toFixed(2)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))
+              </TouchableOpacity>
+            );
+          })
         ) : (
           <View style={styles.emptyContainer}>
             <Ionicons name="game-controller-outline" size={64} color={colors.textMuted} />
             <Text style={styles.emptyText}>No hay cuentas</Text>
-            <Text style={styles.emptySubtext}>Presiona el botón + para agregar una</Text>
+            <Text style={styles.emptySubtext}>Presiona + para agregar</Text>
           </View>
         )}
       </ScrollView>
 
-      {/* Botón flotante */}
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={() => setModalVisible(true)}
-      >
+      <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
         <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Modal para crear cuenta */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalContainer}
-        >
-          <ScrollView style={styles.modalScrollView}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Nueva Cuenta</Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)}>
-                  <Ionicons name="close" size={28} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Foto */}
-              <Text style={styles.label}>Foto de la Cuenta</Text>
-              <TouchableOpacity style={styles.photoSelector} onPress={pickImage}>
-                {fotoBase64 ? (
-                  <Image source={{ uri: fotoBase64 }} style={styles.photoPreview} />
-                ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <Ionicons name="camera" size={32} color={colors.textMuted} />
-                    <Text style={styles.photoPlaceholderText}>Seleccionar foto</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              <Text style={styles.label}>Título *</Text>
-              <TextInput
-                style={styles.input}
-                value={titulo}
-                onChangeText={setTitulo}
-                placeholder="Ej: Cuenta Free Fire #1"
-                placeholderTextColor={colors.textMuted}
-              />
-
-              <Text style={styles.label}>Plataforma</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-                <View style={styles.plataformaContainer}>
-                  {plataformas.map((p) => (
-                    <TouchableOpacity
-                      key={p}
-                      style={[styles.plataformaButton, plataforma === p && styles.plataformaButtonActive]}
-                      onPress={() => setPlataforma(p)}
-                    >
-                      <Text style={[styles.plataformaText, plataforma === p && styles.plataformaTextActive]}>
-                        {p}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-
-              <Text style={styles.label}>Email *</Text>
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="correo@ejemplo.com"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-
-              <Text style={styles.label}>Contraseña *</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor={colors.textMuted}
-              />
-
-              <Text style={styles.label}>Códigos de Respaldo</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={codigosRespaldo}
-                onChangeText={setCodigosRespaldo}
-                placeholder="Códigos de recuperación..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                numberOfLines={2}
-              />
-
-              <Text style={styles.label}>Región</Text>
-              <View style={styles.regionContainer}>
-                <TouchableOpacity
-                  style={[styles.regionButton, region === 'USA' && styles.regionButtonActive]}
-                  onPress={() => setRegion('USA')}
-                >
-                  <Text style={[styles.regionText, region === 'USA' && styles.regionTextActive]}>
-                    USA
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.regionButton, region === 'South America' && styles.regionButtonActive]}
-                  onPress={() => setRegion('South America')}
-                >
-                  <Text style={[styles.regionText, region === 'South America' && styles.regionTextActive]}>
-                    Sudamérica
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.label}>Estados</Text>
-              <View style={styles.estadosContainer}>
-                {estadosDisponibles.map((estado) => (
-                  <TouchableOpacity
-                    key={estado}
-                    style={[
-                      styles.estadoChip,
-                      estados.includes(estado) && styles.estadoChipActive
-                    ]}
-                    onPress={() => toggleEstado(estado)}
-                  >
-                    <Text style={[
-                      styles.estadoChipText,
-                      estados.includes(estado) && styles.estadoChipTextActive
-                    ]}>
-                      {estado}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.label}>Notas</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={notas}
-                onChangeText={setNotas}
-                placeholder="Información adicional..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                numberOfLines={3}
-              />
-
-              <TouchableOpacity
-                style={[styles.saveButton, savingAccount && styles.saveButtonDisabled]}
-                onPress={handleCrearCuenta}
-                disabled={savingAccount}
-              >
-                <Text style={styles.saveButtonText}>
-                  {savingAccount ? 'Guardando...' : 'Guardar Cuenta'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+      <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
+          {renderFormulario(false)}
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Modal de vista previa grande */}
-      <Modal
-        visible={detailModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setDetailModalVisible(false)}
-      >
-        <View style={styles.detailModalContainer}>
-          <TouchableOpacity 
-            style={styles.closeDetailButton}
-            onPress={() => setDetailModalVisible(false)}
-          >
-            <Ionicons name="close-circle" size={40} color="#FFFFFF" />
-          </TouchableOpacity>
-
-          {selectedAccount && (
-            <ScrollView style={styles.detailContent} contentContainerStyle={styles.detailContentScroll}>
-              {/* Foto grande */}
-              {selectedAccount.foto_base64 ? (
-                <Image 
-                  source={{ uri: selectedAccount.foto_base64 }} 
-                  style={styles.detailPhoto}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.detailPhoto, styles.detailPhotoPlaceholder]}>
-                  <Ionicons name="person" size={80} color={colors.textMuted} />
-                </View>
-              )}
-
-              <View style={styles.detailInfoContainer}>
-                <Text style={styles.detailTitle}>{selectedAccount.titulo}</Text>
-                <Text style={styles.detailPlatform}>{selectedAccount.plataforma}</Text>
-
-                {/* Credenciales destacadas */}
-                <View style={styles.credentialsCard}>
-                  <Text style={styles.credentialsTitle}>CREDENCIALES</Text>
-                  
-                  <View style={styles.credentialDetailRow}>
-                    <View style={styles.credentialInfo}>
-                      <Text style={styles.credentialLabel}>Email</Text>
-                      <Text style={styles.credentialValue}>{selectedAccount.email}</Text>
-                    </View>
-                    <TouchableOpacity 
-                      onPress={() => copyToClipboard(selectedAccount.email, 'Email')}
-                      style={styles.copyButton}
-                    >
-                      <Ionicons name="copy-outline" size={20} color={colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.credentialDetailRow}>
-                    <View style={styles.credentialInfo}>
-                      <Text style={styles.credentialLabel}>Contraseña</Text>
-                      <Text style={styles.credentialValue}>{selectedAccount.password}</Text>
-                    </View>
-                    <TouchableOpacity 
-                      onPress={() => copyToClipboard(selectedAccount.password, 'Contraseña')}
-                      style={styles.copyButton}
-                    >
-                      <Ionicons name="copy-outline" size={20} color={colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-
-                  {selectedAccount.codigos_respaldo && (
-                    <View style={styles.credentialDetailRow}>
-                      <View style={styles.credentialInfo}>
-                        <Text style={styles.credentialLabel}>Códigos de Respaldo</Text>
-                        <Text style={styles.credentialValue}>{selectedAccount.codigos_respaldo}</Text>
-                      </View>
-                      <TouchableOpacity 
-                        onPress={() => copyToClipboard(selectedAccount.codigos_respaldo, 'Códigos')}
-                        style={styles.copyButton}
-                      >
-                        <Ionicons name="copy-outline" size={20} color={colors.primary} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-
-                {/* Información adicional */}
-                <View style={styles.infoSection}>
-                  <Text style={styles.infoLabel}>Región</Text>
-                  <Text style={styles.infoValue}>{selectedAccount.region}</Text>
-                </View>
-
-                {selectedAccount.estado.length > 0 && (
-                  <View style={styles.infoSection}>
-                    <Text style={styles.infoLabel}>Estados</Text>
-                    <View style={styles.estadosRow}>
-                      {selectedAccount.estado.map((estado: string, index: number) => (
-                        <View key={index} style={styles.estadoBadgeDetail}>
-                          <Text style={styles.estadoBadgeText}>{estado}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                )}
-
-                {selectedAccount.notas && (
-                  <View style={styles.infoSection}>
-                    <Text style={styles.infoLabel}>Notas</Text>
-                    <Text style={styles.infoValue}>{selectedAccount.notas}</Text>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
-          )}
-        </View>
+      <Modal visible={editModalVisible} animationType="slide" transparent={true} onRequestClose={() => setEditModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
+          {renderFormulario(true)}
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    backgroundColor: colors.primary,
-    padding: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  searchContainer: {
-    padding: 16,
-    backgroundColor: colors.background,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.backgroundCard,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text,
-  },
-  filtersScroll: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  filtersContainer: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingBottom: 8,
-  },
-  filterChip: {
-    backgroundColor: colors.chipInactive,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  filterChipActive: {
-    backgroundColor: colors.chipActive,
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.chipTextInactive,
-  },
-  filterTextActive: {
-    color: colors.chipTextActive,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 100,
-  },
-  accountCard: {
-    backgroundColor: colors.backgroundCard,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  cardContent: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  accountPhoto: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
-  accountPhotoPlaceholder: {
-    backgroundColor: colors.chipInactive,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  accountInfo: {
-    flex: 1,
-  },
-  accountRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  accountTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    flex: 1,
-  },
-  accountPlatform: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginLeft: 8,
-  },
-  credentialRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  credentialText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    flex: 1,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-    marginTop: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 80,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'flex-end',
-  },
-  modalScrollView: {
-    flex: 1,
-  },
-  modalContent: {
-    backgroundColor: colors.backgroundCard,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-    minHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  photoSelector: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  photoPreview: {
-    width: '100%',
-    height: '100%',
-  },
-  photoPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: colors.chipInactive,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoPlaceholderText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  input: {
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  horizontalScroll: {
-    marginBottom: 8,
-  },
-  plataformaContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  plataformaButton: {
-    backgroundColor: colors.chipInactive,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  plataformaButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  plataformaText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.chipTextInactive,
-  },
-  plataformaTextActive: {
-    color: colors.chipTextActive,
-  },
-  regionContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  regionButton: {
-    flex: 1,
-    backgroundColor: colors.chipInactive,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  regionButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  regionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.chipTextInactive,
-  },
-  regionTextActive: {
-    color: colors.chipTextActive,
-  },
-  estadosContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  estadoChip: {
-    backgroundColor: colors.chipInactive,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  estadoChipActive: {
-    backgroundColor: colors.primary,
-  },
-  estadoChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.chipTextInactive,
-  },
-  estadoChipTextActive: {
-    color: colors.chipTextActive,
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  detailModalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-  },
-  closeDetailButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 10,
-  },
-  detailContent: {
-    flex: 1,
-    marginTop: 100,
-  },
-  detailContentScroll: {
-    paddingBottom: 40,
-  },
-  detailPhoto: {
-    width: '100%',
-    height: 300,
-  },
-  detailPhotoPlaceholder: {
-    backgroundColor: colors.chipInactive,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  detailInfoContainer: {
-    padding: 24,
-  },
-  detailTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  detailPlatform: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: 24,
-  },
-  credentialsCard: {
-    backgroundColor: colors.primary + '25',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  credentialsTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 16,
-    letterSpacing: 1,
-  },
-  credentialDetailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  credentialInfo: {
-    flex: 1,
-  },
-  credentialLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  credentialValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  copyButton: {
-    backgroundColor: colors.backgroundCard,
-    padding: 10,
-    borderRadius: 8,
-  },
-  infoSection: {
-    marginBottom: 20,
-  },
-  infoLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 6,
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  estadosRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  estadoBadgeDetail: {
-    backgroundColor: colors.chipInactive,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  estadoBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primary,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  loadingContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  header: { backgroundColor: colors.primary, padding: 20, paddingTop: 60, paddingBottom: 20 },
+  title: { fontSize: 28, fontWeight: 'bold', color: '#FFFFFF' },
+  searchContainer: { padding: 12, backgroundColor: colors.background },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.backgroundCard, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: colors.text },
+  filtersScroll: { paddingHorizontal: 12, marginBottom: 4 },
+  filtersContainer: { flexDirection: 'row', gap: 6, paddingBottom: 4 },
+  filterChip: { backgroundColor: colors.chipInactive, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  filterChipActive: { backgroundColor: colors.chipActive },
+  filterText: { fontSize: 11, fontWeight: '600', color: colors.chipTextInactive },
+  filterTextActive: { color: colors.chipTextActive },
+  scrollView: { flex: 1 },
+  listContent: { padding: 12, paddingBottom: 100 },
+  accountCard: { backgroundColor: colors.backgroundCard, borderRadius: 12, padding: 12, marginBottom: 10 },
+  cardContent: { flexDirection: 'row', gap: 12 },
+  accountPhoto: { width: 70, height: 70, borderRadius: 35 },
+  accountPhotoPlaceholder: { backgroundColor: colors.chipInactive, alignItems: 'center', justifyContent: 'center' },
+  accountInfo: { flex: 1 },
+  accountTitle: { fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: 4 },
+  accountEmail: { fontSize: 13, color: colors.textSecondary, marginBottom: 6 },
+  pricesRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
+  priceLabel: { fontSize: 11, color: colors.textMuted },
+  priceValue: { fontWeight: '600', color: colors.text },
+  priceValueVenta: { fontWeight: '600', color: colors.success },
+  ganancia: { fontSize: 13, fontWeight: 'bold', marginTop: 2 },
+  gananciaPositiva: { color: colors.success },
+  gananciaNegativa: { color: colors.error },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 60 },
+  emptyText: { fontSize: 18, fontWeight: '600', color: colors.text, marginTop: 16 },
+  emptySubtext: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
+  fab: { position: 'absolute', right: 20, bottom: 80, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 6 },
+  modalContainer: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
+  modalScrollView: { flex: 1 },
+  modalContent: { backgroundColor: colors.backgroundCard, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, minHeight: '90%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', color: colors.text },
+  label: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, marginTop: 12 },
+  photoSelector: { width: '100%', height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 8 },
+  photoPreview: { width: '100%', height: '100%' },
+  photoPlaceholder: { width: '100%', height: '100%', backgroundColor: colors.chipInactive, alignItems: 'center', justifyContent: 'center' },
+  photoPlaceholderText: { marginTop: 8, fontSize: 13, color: colors.textMuted },
+  input: { backgroundColor: colors.background, borderRadius: 10, padding: 12, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border },
+  textArea: { minHeight: 70, textAlignVertical: 'top' },
+  plataformaContainer: { flexDirection: 'row', gap: 8 },
+  plataformaButton: { backgroundColor: colors.chipInactive, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  plataformaButtonActive: { backgroundColor: colors.primary },
+  plataformaText: { fontSize: 13, fontWeight: '600', color: colors.chipTextInactive },
+  plataformaTextActive: { color: colors.chipTextActive },
+  regionContainer: { flexDirection: 'row', gap: 8 },
+  regionButton: { flex: 1, backgroundColor: colors.chipInactive, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+  regionButtonActive: { backgroundColor: colors.primary },
+  regionText: { fontSize: 13, fontWeight: '600', color: colors.chipTextInactive },
+  regionTextActive: { color: colors.chipTextActive },
+  estadosContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  estadoChip: { backgroundColor: colors.chipInactive, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  estadoChipActive: { backgroundColor: colors.primary },
+  estadoChipText: { fontSize: 11, fontWeight: '600', color: colors.chipTextInactive },
+  estadoChipTextActive: { color: colors.chipTextActive },
+  saveButton: { backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 10, alignItems: 'center', marginTop: 20 },
+  saveButtonDisabled: { opacity: 0.5 },
+  saveButtonText: { fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' },
 });

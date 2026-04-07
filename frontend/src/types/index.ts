@@ -44,6 +44,8 @@ export interface Account {
   password: string;
   codigos_respaldo?: string;
   foto_base64?: string;
+  precio_compra: number;
+  precio_venta: number;
   estado: EstadoCuenta[];
   region: string;
   notas?: string;
@@ -61,6 +63,8 @@ export interface AccountCreate {
   password: string;
   codigos_respaldo?: string;
   foto_base64?: string;
+  precio_compra: number;
+  precio_venta: number;
   estado: EstadoCuenta[];
   region: string;
   notas?: string;
