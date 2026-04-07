@@ -23,12 +23,14 @@ import {
 import { guardarTransaccionLocal, obtenerTransaccionesLocales } from '../services/database';
 import { Ionicons } from '@expo/vector-icons';
 import { TipoTransaccion, MonedaType, TransactionCreate } from '../types';
+import { format } from 'date-fns';
 
 export default function TransactionsScreen() {
   const { transacciones, setTransacciones, agregarTransaccion, isOnline, setResumenFinanciero } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
   
   // Form state
   const [tipo, setTipo] = useState<TipoTransaccion>('ingreso');
@@ -70,7 +72,7 @@ export default function TransactionsScreen() {
 
   const handleCrearTransaccion = async () => {
     if (!monto || parseFloat(monto) <= 0) {
-      Alert.alert('Error', 'Ingresa un monto válido');
+      Alert.alert('Error', 'Ingresa un monto v\u00e1lido');
       return;
     }
 
@@ -80,7 +82,7 @@ export default function TransactionsScreen() {
         tipo,
         monto: parseFloat(monto),
         moneda,
-        fecha: new Date().toISOString(),
+        fecha: selectedDate.toISOString(),
         notas: notas || undefined,
       };
 
@@ -97,27 +99,53 @@ export default function TransactionsScreen() {
       setNotas('');
       setModalVisible(false);
       
-      Alert.alert('Éxito', 'Transacción creada correctamente');
+      Alert.alert('\u00c9xito', 'Transacci\u00f3n creada correctamente');
     } catch (error) {
-      console.error('Error creando transacción:', error);
-      Alert.alert('Error', 'No se pudo crear la transacción');
+      console.error('Error creando transacci\u00f3n:', error);
+      Alert.alert('Error', 'No se pudo crear la transacci\u00f3n');
     } finally {
       setLoading(false);
     }
   };
 
+  const changeDate = (days: number) => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() + days);
+    setSelectedDate(newDate);
+  };
+
+  const formatDateHeader = (date: Date) => {
+    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    return `${date.getDate().toString().padStart(2, '0')} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  };
+
+  // Filtrar transacciones por fecha seleccionada
+  const filteredTransactions = transacciones.filter(trans => {
+    const transDate = new Date(trans.fecha);
+    return transDate.toDateString() === selectedDate.toDateString();
+  });
+
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Transacciones</Text>
-        <TouchableOpacity 
-          style={styles.addButton}
-          onPress={() => setModalVisible(true)}
-        >
-          <Ionicons name="add" size={24} color={colors.text} />
+        <Text style={styles.title}>Finanzas</Text>
+      </View>
+
+      {/* Selector de fecha */}
+      <View style={styles.dateSelector}>
+        <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateButton}>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        
+        <Text style={styles.dateText}>{formatDateHeader(selectedDate)}</Text>
+        
+        <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateButton}>
+          <Ionicons name="chevron-forward" size={24} color={colors.text} />
         </TouchableOpacity>
       </View>
 
+      {/* Lista de transacciones */}
       <ScrollView
         style={styles.scrollView}
         refreshControl={
@@ -129,21 +157,44 @@ export default function TransactionsScreen() {
         }
       >
         <View style={styles.content}>
-          {transacciones.length > 0 ? (
-            transacciones.map((trans) => (
+          {filteredTransactions.length > 0 ? (
+            filteredTransactions.map((trans) => (
               <TransactionItem key={trans.id} transaction={trans} />
             ))
           ) : (
             <View style={styles.emptyContainer}>
-              <Ionicons name="receipt-outline" size={64} color={colors.textMuted} />
+              <Ionicons name="wallet-outline" size={80} color={colors.textMuted} />
               <Text style={styles.emptyText}>No hay transacciones</Text>
-              <Text style={styles.emptySubtext}>Presiona el botón + para agregar una</Text>
+              <Text style={styles.emptySubtext}>Agrega un gasto o ingreso</Text>
             </View>
           )}
         </View>
       </ScrollView>
 
-      {/* Modal para crear transacción */}
+      {/* Botones flotantes - Gasto (Rojo) e Ingreso (Verde) */}
+      <TouchableOpacity 
+        style={[styles.fabGasto]}
+        onPress={() => {
+          setTipo('gasto');
+          setModalVisible(true);
+        }}
+      >
+        <Ionicons name="remove" size={24} color="#FFFFFF" />
+        <Text style={styles.fabText}>Gasto</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={[styles.fabIngreso]}
+        onPress={() => {
+          setTipo('ingreso');
+          setModalVisible(true);
+        }}
+      >
+        <Ionicons name="add" size={24} color="#FFFFFF" />
+        <Text style={styles.fabText}>Ingreso</Text>
+      </TouchableOpacity>
+
+      {/* Modal para crear transacci\u00f3n */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -156,38 +207,11 @@ export default function TransactionsScreen() {
         >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nueva Transacción</Text>
+              <Text style={styles.modalTitle}>
+                {tipo === 'ingreso' ? 'Nuevo Ingreso' : 'Nuevo Gasto'}
+              </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={28} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Tipo de transacción */}
-            <Text style={styles.label}>Tipo</Text>
-            <View style={styles.tipoContainer}>
-              <TouchableOpacity
-                style={[styles.tipoButton, tipo === 'ingreso' && styles.tipoButtonActive]}
-                onPress={() => setTipo('ingreso')}
-              >
-                <Text style={[styles.tipoText, tipo === 'ingreso' && styles.tipoTextActive]}>
-                  Ingreso
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tipoButton, tipo === 'gasto' && styles.tipoButtonActive]}
-                onPress={() => setTipo('gasto')}
-              >
-                <Text style={[styles.tipoText, tipo === 'gasto' && styles.tipoTextActive]}>
-                  Gasto
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tipoButton, tipo === 'inversion' && styles.tipoButtonActive]}
-                onPress={() => setTipo('inversion')}
-              >
-                <Text style={[styles.tipoText, tipo === 'inversion' && styles.tipoTextActive]}>
-                  Inversión
-                </Text>
               </TouchableOpacity>
             </View>
 
@@ -229,20 +253,24 @@ export default function TransactionsScreen() {
               style={[styles.input, styles.textArea]}
               value={notas}
               onChangeText={setNotas}
-              placeholder="Descripción de la transacción"
+              placeholder="Descripci\u00f3n de la transacci\u00f3n"
               placeholderTextColor={colors.textMuted}
               multiline
               numberOfLines={3}
             />
 
-            {/* Botón guardar */}
+            {/* Bot\u00f3n guardar */}
             <TouchableOpacity
-              style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+              style={[
+                styles.saveButton, 
+                { backgroundColor: tipo === 'ingreso' ? colors.ingreso : colors.gasto },
+                loading && styles.saveButtonDisabled
+              ]}
               onPress={handleCrearTransaccion}
               disabled={loading}
             >
               <Text style={styles.saveButtonText}>
-                {loading ? 'Guardando...' : 'Guardar Transacción'}
+                {loading ? 'Guardando...' : `Guardar ${tipo === 'ingreso' ? 'Ingreso' : 'Gasto'}`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -258,37 +286,46 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    backgroundColor: colors.primary,
     padding: 20,
     paddingTop: 60,
+    paddingBottom: 20,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: colors.text,
+    color: '#FFFFFF',
   },
-  addButton: {
-    backgroundColor: colors.primary,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  dateSelector: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.backgroundCard,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dateButton: {
+    padding: 8,
+  },
+  dateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
   },
   scrollView: {
     flex: 1,
   },
   content: {
     padding: 20,
-    paddingTop: 0,
+    paddingBottom: 100,
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 40,
-    marginTop: 60,
+    marginTop: 80,
   },
   emptyText: {
     fontSize: 18,
@@ -302,13 +339,52 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
+  fabGasto: {
+    position: 'absolute',
+    right: 20,
+    bottom: 160,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gasto,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    gap: 8,
+  },
+  fabIngreso: {
+    position: 'absolute',
+    right: 20,
+    bottom: 90,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ingreso,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    gap: 8,
+  },
+  fabText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   modalContainer: {
     flex: 1,
     backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: colors.backgroundCard,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -332,35 +408,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 16,
   },
-  tipoContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  tipoButton: {
-    flex: 1,
-    backgroundColor: colors.backgroundCard,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  tipoButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  tipoText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  tipoTextActive: {
-    color: colors.text,
-  },
   monedaContainer: {
     flexDirection: 'row',
     gap: 8,
   },
   monedaButton: {
     flex: 1,
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: colors.chipInactive,
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
@@ -371,24 +425,25 @@ const styles = StyleSheet.create({
   monedaText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.chipTextInactive,
   },
   monedaTextActive: {
-    color: colors.text,
+    color: colors.chipTextActive,
   },
   input: {
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: colors.background,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
     color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   textArea: {
     minHeight: 80,
     textAlignVertical: 'top',
   },
   saveButton: {
-    backgroundColor: colors.primary,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -400,6 +455,6 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: colors.text,
+    color: '#FFFFFF',
   },
 });

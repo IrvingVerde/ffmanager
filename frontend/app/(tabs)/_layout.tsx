@@ -10,7 +10,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: colors.backgroundSecondary,
+          backgroundColor: colors.backgroundCard,
           borderTopColor: colors.border,
           borderTopWidth: 1,
           height: 60,
@@ -24,29 +24,38 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="dashboard"
+        name="inventario"
         options={{
-          title: 'Dashboard',
+          title: 'Inventario',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart" size={size} color={color} />
+            <Ionicons name="grid" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="transactions"
+        name="finanzas"
         options={{
-          title: 'Transacciones',
+          title: 'Finanzas',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="wallet" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="accounts"
+        name="notas"
         options={{
-          title: 'Cuentas',
+          title: 'Notas',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="game-controller" size={size} color={color} />
+            <Ionicons name="document-text" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="resumen"
+        options={{
+          title: 'Resumen',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="stats-chart" size={size} color={color} />
           ),
         }}
       />
