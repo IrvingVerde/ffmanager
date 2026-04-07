@@ -23,8 +23,7 @@ import {
 } from '../services/api';
 import { guardarCuentaLocal, obtenerCuentasLocales } from '../services/database';
 import { Ionicons } from '@expo/vector-icons';
-import { PlataformaType, EstadoCuenta, AccountCreate } from '../types';
-import * as Clipboard from 'expo-clipboard';
+import { PlataformaType, EstadoPrincipal, EstadoSecundario, AccountCreate } from '../types';
 import * as ImagePicker from 'expo-image-picker';
 
 export default function AccountsScreen() {
@@ -46,7 +45,8 @@ export default function AccountsScreen() {
   const [fotoBase64, setFotoBase64] = useState<string | undefined>(undefined);
   const [precioCompra, setPrecioCompra] = useState('');
   const [precioVenta, setPrecioVenta] = useState('');
-  const [estados, setEstados] = useState<EstadoCuenta[]>(['Disponible']);
+  const [estadoPrincipal, setEstadoPrincipal] = useState<EstadoPrincipal>('Disponible');
+  const [estadosSecundarios, setEstadosSecundarios] = useState<EstadoSecundario[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const cargarCuentas = async () => {
@@ -125,7 +125,8 @@ export default function AccountsScreen() {
         foto_base64: fotoBase64,
         precio_compra: parseFloat(precioCompra) || 0,
         precio_venta: parseFloat(precioVenta) || 0,
-        estado: estados,
+        estado_principal: estadoPrincipal,
+        estados_secundarios: estadosSecundarios,
       };
 
       const cuentaCreada = await crearCuenta(nuevaCuenta);
@@ -163,7 +164,8 @@ export default function AccountsScreen() {
         foto_base64: fotoBase64,
         precio_compra: parseFloat(precioCompra) || 0,
         precio_venta: parseFloat(precioVenta) || 0,
-        estado: estados,
+        estado_principal: estadoPrincipal,
+        estados_secundarios: estadosSecundarios,
       };
 
       const resultado = await actualizarCuenta(editingId, cuentaActualizada);
@@ -192,7 +194,8 @@ export default function AccountsScreen() {
     setPrecioCompra('');
     setPrecioVenta('');
     setRegion('SUR');
-    setEstados(['Disponible']);
+    setEstadoPrincipal('Disponible');
+    setEstadosSecundarios([]);
     setEditingId(null);
   };
 
@@ -208,34 +211,35 @@ export default function AccountsScreen() {
     setFotoBase64(cuenta.foto_base64);
     setPrecioCompra(cuenta.precio_compra?.toString() || '0');
     setPrecioVenta(cuenta.precio_venta?.toString() || '0');
-    setEstados(cuenta.estado);
+    setEstadoPrincipal(cuenta.estado_principal || 'Disponible');
+    setEstadosSecundarios(cuenta.estados_secundarios || []);
     setEditModalVisible(true);
   };
 
-  const toggleEstado = (estado: EstadoCuenta) => {
-    if (estados.includes(estado)) {
-      setEstados(estados.filter(e => e !== estado));
+  const toggleEstadoSecundario = (estado: EstadoSecundario) => {
+    if (estadosSecundarios.includes(estado)) {
+      setEstadosSecundarios(estadosSecundarios.filter(e => e !== estado));
     } else {
-      setEstados([...estados, estado]);
+      setEstadosSecundarios([...estadosSecundarios, estado]);
     }
   };
 
   const plataformas: PlataformaType[] = ['Facebook', 'Google', 'VK', 'Twitter', 'Otro'];
   const regiones = ['SUR', 'EEUU', 'NORTE', 'BRASIL', 'EUROPA', 'OTROS'];
-  const estadosDisponibles: EstadoCuenta[] = [
-    'Disponible',
-    'Reservada',
-    'Vendida',
-    'En Proceso',
-    'Email Confirmado',
-    'Email Perdido',
-  ];
+  const estadosPrincipales: EstadoPrincipal[] = ['Disponible', 'Vendida', 'Reservada'];
+  const estadosSecundariosOpciones: EstadoSecundario[] = ['En Proceso', 'Correo Confirmado', 'Correo Perdido'];
 
-  const getStatusColor = (estados: EstadoCuenta[]) => {
-    if (estados.includes('Vendida')) return colors.error;
-    if (estados.includes('Disponible')) return colors.success;
-    if (estados.includes('Reservada')) return colors.warning;
-    return colors.info;
+  const getCardBackgroundColor = (estado: string) => {
+    switch (estado) {
+      case 'Vendida':
+        return '#FFE5E5'; // Rojo claro
+      case 'Disponible':
+        return '#E5F8E5'; // Verde claro
+      case 'Reservada':
+        return '#FFE8D5'; // Naranja claro
+      default:
+        return colors.backgroundCard;
+    }
   };
 
   const calcularGanancia = (compra: number, venta: number) => {
@@ -366,15 +370,30 @@ export default function AccountsScreen() {
           </View>
         </ScrollView>
 
-        <Text style={styles.label}>Estados</Text>
-        <View style={styles.estadosContainer}>
-          {estadosDisponibles.map((estado) => (
+        <Text style={styles.label}>Estado de Cuenta</Text>
+        <View style={styles.estadoPrincipalContainer}>
+          {estadosPrincipales.map((estado) => (
             <TouchableOpacity
               key={estado}
-              style={[styles.estadoChip, estados.includes(estado) && styles.estadoChipActive]}
-              onPress={() => toggleEstado(estado)}
+              style={[styles.estadoPrincipalButton, estadoPrincipal === estado && styles.estadoPrincipalActive]}
+              onPress={() => setEstadoPrincipal(estado)}
             >
-              <Text style={[styles.estadoChipText, estados.includes(estado) && styles.estadoChipTextActive]}>
+              <Text style={[styles.estadoPrincipalText, estadoPrincipal === estado && styles.estadoPrincipalTextActive]}>
+                {estado}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Estados Adicionales</Text>
+        <View style={styles.estadosContainer}>
+          {estadosSecundariosOpciones.map((estado) => (
+            <TouchableOpacity
+              key={estado}
+              style={[styles.estadoChip, estadosSecundarios.includes(estado) && styles.estadoChipActive]}
+              onPress={() => toggleEstadoSecundario(estado)}
+            >
+              <Text style={[styles.estadoChipText, estadosSecundarios.includes(estado) && styles.estadoChipTextActive]}>
                 {estado}
               </Text>
             </TouchableOpacity>
@@ -407,8 +426,18 @@ export default function AccountsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header con diseño abstracto minimalista */}
       <View style={styles.header}>
-        <Text style={styles.title}>Inventario</Text>
+        {/* Diseño abstracto de fondo */}
+        <View style={styles.abstractShape1} />
+        <View style={styles.abstractShape2} />
+        <View style={styles.abstractShape3} />
+        
+        <View style={styles.headerContent}>
+          <Text style={styles.title}>FREE FIRE</Text>
+          <Text style={styles.titleSecondary}>APP MANAGER</Text>
+          <Text style={styles.subtitle}>By: Irving</Text>
+        </View>
       </View>
 
       <ScrollView
@@ -419,10 +448,12 @@ export default function AccountsScreen() {
         {cuentas.length > 0 ? (
           cuentas.map((cuenta) => {
             const ganancia = calcularGanancia(cuenta.precio_compra || 0, cuenta.precio_venta || 0);
+            const bgColor = getCardBackgroundColor(cuenta.estado_principal || 'Disponible');
+            
             return (
               <TouchableOpacity 
                 key={cuenta.id}
-                style={styles.accountCard}
+                style={[styles.accountCard, { backgroundColor: bgColor }]}
                 onPress={() => abrirEdicion(cuenta)}
                 activeOpacity={0.7}
               >
@@ -439,7 +470,7 @@ export default function AccountsScreen() {
                     <View style={styles.titleRow}>
                       <Text style={styles.accountTitle} numberOfLines={1}>{cuenta.titulo}</Text>
                       <View style={styles.regionBadge}>
-                        <Text style={styles.regionText}>{cuenta.region}</Text>
+                        <Text style={styles.regionBadgeText}>{cuenta.region}</Text>
                       </View>
                     </View>
                     <Text style={styles.accountEmail} numberOfLines={1}>{cuenta.email}</Text>
@@ -488,11 +519,76 @@ export default function AccountsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   loadingContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  header: { backgroundColor: colors.primary, padding: 20, paddingTop: 60, paddingBottom: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#FFFFFF' },
+  header: { 
+    backgroundColor: colors.primary, 
+    paddingTop: 60, 
+    paddingBottom: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  abstractShape1: {
+    position: 'absolute',
+    top: -40,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  abstractShape2: {
+    position: 'absolute',
+    bottom: -20,
+    left: -20,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  abstractShape3: {
+    position: 'absolute',
+    top: 20,
+    left: '30%',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  headerContent: {
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  title: { 
+    fontSize: 32, 
+    fontWeight: '900', 
+    color: '#FFFFFF',
+    letterSpacing: 2,
+  },
+  titleSecondary: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+    marginTop: -4,
+  },
+  subtitle: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 6,
+    fontStyle: 'italic',
+    letterSpacing: 0.5,
+  },
   scrollView: { flex: 1 },
   listContent: { padding: 16, paddingTop: 20, paddingBottom: 100 },
-  accountCard: { backgroundColor: colors.backgroundCard, borderRadius: 12, padding: 12, marginBottom: 12 },
+  accountCard: { 
+    borderRadius: 12, 
+    padding: 12, 
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
   cardContent: { flexDirection: 'row', gap: 12 },
   accountPhoto: { width: 70, height: 70, borderRadius: 35 },
   accountPhotoPlaceholder: { backgroundColor: colors.chipInactive, alignItems: 'center', justifyContent: 'center' },
@@ -500,7 +596,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   accountTitle: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1, marginRight: 8 },
   regionBadge: { backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  regionText: { fontSize: 10, fontWeight: 'bold', color: '#FFFFFF' },
+  regionBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#FFFFFF' },
   accountEmail: { fontSize: 13, color: colors.textSecondary, marginBottom: 6 },
   pricesRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
   priceLabel: { fontSize: 11, color: colors.textMuted },
@@ -533,6 +629,12 @@ const styles = StyleSheet.create({
   regionContainer: { flexDirection: 'row', gap: 8, paddingBottom: 8 },
   regionButton: { backgroundColor: colors.chipInactive, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   regionButtonActive: { backgroundColor: colors.primary },
+  regionText: { fontSize: 13, fontWeight: '600', color: colors.chipTextInactive },
+  estadoPrincipalContainer: { flexDirection: 'row', gap: 8 },
+  estadoPrincipalButton: { flex: 1, backgroundColor: colors.chipInactive, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  estadoPrincipalActive: { backgroundColor: colors.primary },
+  estadoPrincipalText: { fontSize: 13, fontWeight: '600', color: colors.chipTextInactive },
+  estadoPrincipalTextActive: { color: colors.chipTextActive },
   estadosContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   estadoChip: { backgroundColor: colors.chipInactive, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   estadoChipActive: { backgroundColor: colors.primary },

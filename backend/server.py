@@ -64,11 +64,12 @@ class AccountCreate(BaseModel):
     email: str
     password: str
     codigos_respaldo: Optional[str] = None
-    foto_base64: Optional[str] = None  # Foto en base64
+    foto_base64: Optional[str] = None
     precio_compra: float = 0.0
     precio_venta: float = 0.0
-    estado: List[str] = []  # ["Email Confirmado", "Email Perdido", "En Proceso", "Vendida", "Disponible", "Reservada"]
-    region: str = "USA"  # USA, South America, o custom
+    estado_principal: Literal["Disponible", "Vendida", "Reservada"] = "Disponible"
+    estados_secundarios: List[str] = []  # ["En Proceso", "Correo Confirmado", "Correo Perdido"]
+    region: str = "SUR"
     notas: Optional[str] = None
     fecha_compra: Optional[datetime] = None
     fecha_venta: Optional[datetime] = None
@@ -84,7 +85,8 @@ class Account(BaseModel):
     foto_base64: Optional[str] = None
     precio_compra: float = 0.0
     precio_venta: float = 0.0
-    estado: List[str]
+    estado_principal: str = "Disponible"
+    estados_secundarios: List[str] = []
     region: str
     notas: Optional[str] = None
     fecha_compra: Optional[datetime] = None
