@@ -277,6 +277,108 @@ test_plan:
   test_all: true
   test_priority: "high_first"
 
+  - task: "Accounts CRUD - Delete (Frontend Integration)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "user"
+        comment: "User reported delete button not working from frontend"
+      - working: "NA"
+        agent: "main"
+        comment: "Rewrote delete flow: added trash icon on each card in main screen, long-press for batch selection mode, also delete button in edit modal. Backend DELETE endpoint was already working."
+      - working: true
+        agent: "testing"
+        comment: "✅ Backend DELETE /api/cuentas/{id} endpoint working correctly. Successfully tested: account creation, verification in list, deletion, and confirmation of removal from list. Returns proper success message and removes account from database."
+
+  - task: "Accounts - Vendedor/Comprador Fields"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added vendedor and comprador optional fields to AccountCreate and Account models in backend"
+      - working: true
+        agent: "testing"
+        comment: "✅ Vendedor/Comprador fields working correctly. Tested: POST /api/cuentas creates accounts with vendedor/comprador fields, GET /api/cuentas returns these fields, PUT /api/cuentas/{id} updates these fields successfully. All CRUD operations handle the new fields properly."
+
+  - task: "Accounts - Estado Pura"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added 'Pura' as an option in estados_secundarios list (comment updated). Frontend updated to include it in the chips."
+      - working: true
+        agent: "testing"
+        comment: "✅ Estado 'Pura' working correctly. Tested: POST /api/cuentas accepts 'Pura' in estados_secundarios array, data persists correctly in database, GET /api/cuentas returns 'Pura' in estados_secundarios, PUT /api/cuentas/{id} can update accounts with 'Pura' estado."
+
+frontend:
+  - task: "Delete accounts from main screen"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/screens/AccountsScreen.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added trash icon on each card for single delete, long-press for batch select mode with toolbar"
+
+  - task: "Vendedor/Comprador fields in form and card"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/screens/AccountsScreen.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added vendedor/comprador input fields in create/edit form, displayed on card when available"
+
+  - task: "Estado Pura option"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/screens/AccountsScreen.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added 'Pura' to estados secundarios chips in the form"
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.0"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "All backend testing completed successfully"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
 agent_communication:
   - agent: "testing"
     message: "Comprehensive backend testing completed successfully. All 13 test cases passed including: Health check, Financial dashboard (initial and with data), Complete CRUD operations for Transactions (create, read, update, delete), Complete CRUD operations for Accounts (create, read, get specific, update, delete), Account search functionality. All endpoints working correctly with proper data validation, error handling, and MongoDB integration. Financial calculations are accurate. Date handling in ISO format working properly. Array handling for account estados working correctly."
+  - agent: "main"
+    message: "Implemented three changes: 1) Fixed delete functionality - added trash icon directly on each account card + long-press batch select mode. 2) Added vendedor/comprador fields to backend models and frontend form+display. 3) Added 'Pura' estado to frontend options. Need to verify backend handles new fields correctly with existing data, and test DELETE endpoint integration."
+  - agent: "testing"
+    message: "✅ BACKEND TESTING COMPLETE - All 3 requested features tested and working: 1) DELETE /api/cuentas/{id} - Account deletion working correctly, removes from database and returns success message. 2) Vendedor/Comprador fields - All CRUD operations (POST, GET, PUT) handle these optional string fields properly. 3) Estado 'Pura' - Successfully accepts, stores, and retrieves 'Pura' in estados_secundarios array. All 6 comprehensive test cases passed (100% success rate). Backend API is fully functional for the requested features."

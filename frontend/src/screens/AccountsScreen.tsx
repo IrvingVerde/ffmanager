@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,7 @@ import {
 } from '../services/api';
 import { guardarCuentaLocal, obtenerCuentasLocales, eliminarCuentaLocal } from '../services/database';
 import { Ionicons } from '@expo/vector-icons';
-import { PlataformaType, EstadoPrincipal, EstadoSecundario, AccountCreate } from '../types';
+import { PlataformaType, EstadoPrincipal, EstadoSecundario, AccountCreate, Account } from '../types';
 import * as ImagePicker from 'expo-image-picker';
 
 export default function AccountsScreen() {
@@ -34,6 +34,9 @@ export default function AccountsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   
   // Form state
   const [titulo, setTitulo] = useState('');
@@ -49,8 +52,10 @@ export default function AccountsScreen() {
   const [estadoPrincipal, setEstadoPrincipal] = useState<EstadoPrincipal>('Disponible');
   const [estadosSecundarios, setEstadosSecundarios] = useState<EstadoSecundario[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [vendedor, setVendedor] = useState('');
+  const [comprador, setComprador] = useState('');
 
-  const cargarCuentas = async () => {
+  const cargarCuentas = useCallback(async () => {
     try {
       if (isOnline) {
         const ctas = await obtenerCuentas();
@@ -70,7 +75,7 @@ export default function AccountsScreen() {
       setRefreshing(false);
       setLoading(false);
     }
-  };
+  }, [isOnline]);
 
   useEffect(() => {
     cargarCuentas();
@@ -128,6 +133,8 @@ export default function AccountsScreen() {
         precio_venta: parseFloat(precioVenta) || 0,
         estado_principal: estadoPrincipal,
         estados_secundarios: estadosSecundarios,
+        vendedor: vendedor || undefined,
+        comprador: comprador || undefined,
       };
 
       const cuentaCreada = await crearCuenta(nuevaCuenta);
@@ -167,6 +174,8 @@ export default function AccountsScreen() {
         precio_venta: parseFloat(precioVenta) || 0,
         estado_principal: estadoPrincipal,
         estados_secundarios: estadosSecundarios,
+        vendedor: vendedor || undefined,
+        comprador: comprador || undefined,
       };
 
       const resultado = await actualizarCuenta(editingId, cuentaActualizada);
@@ -185,12 +194,11 @@ export default function AccountsScreen() {
     }
   };
 
-  const handleEliminarCuenta = async () => {
-    if (!editingId) return;
-
+  // Delete single account directly from card
+  const handleDeleteSingle = (id: string, titulo: string) => {
     Alert.alert(
-      'Confirmar',
-      '¿Estás seguro de eliminar esta cuenta?',
+      'Eliminar cuenta',
+      `¿Seguro que quieres eliminar "${titulo}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -198,22 +206,82 @@ export default function AccountsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await eliminarCuenta(editingId);
-              eliminarCuentaStore(editingId);
-              await eliminarCuentaLocal(editingId);
-              
-              resetForm();
-              setEditModalVisible(false);
-              
-              Alert.alert('Éxito', 'Cuenta eliminada');
+              setDeletingIds(prev => new Set(prev).add(id));
+              if (isOnline) {
+                await eliminarCuenta(id);
+              }
+              eliminarCuentaStore(id);
+              await eliminarCuentaLocal(id);
             } catch (error) {
               console.error('Error eliminando cuenta:', error);
-              Alert.alert('Error', 'No se pudo eliminar la cuenta');
+              // Even if backend fails, remove locally
+              eliminarCuentaStore(id);
+              await eliminarCuentaLocal(id);
+            } finally {
+              setDeletingIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+              });
             }
           }
         }
       ]
     );
+  };
+
+  // Batch delete selected accounts
+  const handleDeleteSelected = () => {
+    if (selectedForDelete.size === 0) {
+      Alert.alert('Selecciona cuentas', 'Selecciona al menos una cuenta para eliminar');
+      return;
+    }
+
+    Alert.alert(
+      'Eliminar cuentas',
+      `¿Eliminar ${selectedForDelete.size} cuenta(s) seleccionada(s)?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            const idsToDelete = Array.from(selectedForDelete);
+            setDeletingIds(new Set(idsToDelete));
+            
+            for (const id of idsToDelete) {
+              try {
+                if (isOnline) {
+                  await eliminarCuenta(id);
+                }
+                eliminarCuentaStore(id);
+                await eliminarCuentaLocal(id);
+              } catch (error) {
+                console.error('Error eliminando cuenta:', id, error);
+                eliminarCuentaStore(id);
+                await eliminarCuentaLocal(id);
+              }
+            }
+            
+            setDeletingIds(new Set());
+            setSelectedForDelete(new Set());
+            setDeleteMode(false);
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleSelectForDelete = (id: string) => {
+    setSelectedForDelete(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const resetForm = () => {
@@ -229,9 +297,15 @@ export default function AccountsScreen() {
     setEstadoPrincipal('Disponible');
     setEstadosSecundarios([]);
     setEditingId(null);
+    setVendedor('');
+    setComprador('');
   };
 
-  const abrirEdicion = (cuenta: any) => {
+  const abrirEdicion = (cuenta: Account) => {
+    if (deleteMode) {
+      toggleSelectForDelete(cuenta.id);
+      return;
+    }
     setEditingId(cuenta.id);
     setTitulo(cuenta.titulo);
     setPlataforma(cuenta.plataforma);
@@ -245,6 +319,8 @@ export default function AccountsScreen() {
     setPrecioVenta(cuenta.precio_venta?.toString() || '0');
     setEstadoPrincipal(cuenta.estado_principal || 'Disponible');
     setEstadosSecundarios(cuenta.estados_secundarios || []);
+    setVendedor(cuenta.vendedor || '');
+    setComprador(cuenta.comprador || '');
     setEditModalVisible(true);
   };
 
@@ -259,7 +335,7 @@ export default function AccountsScreen() {
   const plataformas: PlataformaType[] = ['Facebook', 'Google', 'VK', 'Twitter', 'Otro'];
   const regiones = ['SUR', 'EEUU', 'NORTE', 'BRASIL', 'EUROPA', 'OTROS'];
   const estadosPrincipales: EstadoPrincipal[] = ['Disponible', 'Vendida', 'Reservada'];
-  const estadosSecundariosOpciones: EstadoSecundario[] = ['En Proceso', 'Correo Confirmado', 'Correo Perdido'];
+  const estadosSecundariosOpciones: EstadoSecundario[] = ['En Proceso', 'Correo Confirmado', 'Correo Perdido', 'Pura'];
 
   const getCardBackgroundColor = (estado: string) => {
     switch (estado) {
@@ -359,6 +435,24 @@ export default function AccountsScreen() {
           keyboardType="decimal-pad"
         />
 
+        <Text style={styles.label}>Quién me vendió</Text>
+        <TextInput
+          style={styles.input}
+          value={vendedor}
+          onChangeText={setVendedor}
+          placeholder="Nombre del vendedor..."
+          placeholderTextColor={colors.textMuted}
+        />
+
+        <Text style={styles.label}>Quién me la compró</Text>
+        <TextInput
+          style={styles.input}
+          value={comprador}
+          onChangeText={setComprador}
+          placeholder="Nombre del comprador..."
+          placeholderTextColor={colors.textMuted}
+        />
+
         <Text style={styles.label}>Códigos de Respaldo</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
@@ -455,8 +549,15 @@ export default function AccountsScreen() {
 
         {esEdicion && (
           <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={handleEliminarCuenta}
+            style={styles.deleteButtonModal}
+            onPress={() => {
+              if (!editingId) return;
+              const t = titulo;
+              const id = editingId;
+              setEditModalVisible(false);
+              resetForm();
+              setTimeout(() => handleDeleteSingle(id, t), 300);
+            }}
           >
             <Ionicons name="trash" size={20} color="#FFFFFF" />
             <Text style={styles.deleteButtonText}>Eliminar Cuenta</Text>
@@ -479,6 +580,35 @@ export default function AccountsScreen() {
         </View>
       </View>
 
+      {/* Delete mode toolbar */}
+      {deleteMode && (
+        <View style={styles.deleteToolbar}>
+          <TouchableOpacity 
+            style={styles.deleteToolbarCancel} 
+            onPress={() => {
+              setDeleteMode(false);
+              setSelectedForDelete(new Set());
+            }}
+          >
+            <Ionicons name="close" size={20} color={colors.text} />
+            <Text style={styles.deleteToolbarCancelText}>Cancelar</Text>
+          </TouchableOpacity>
+          <Text style={styles.deleteToolbarCount}>
+            {selectedForDelete.size} seleccionada(s)
+          </Text>
+          <TouchableOpacity 
+            style={[
+              styles.deleteToolbarConfirm,
+              selectedForDelete.size === 0 && styles.deleteToolbarConfirmDisabled,
+            ]} 
+            onPress={handleDeleteSelected}
+          >
+            <Ionicons name="trash" size={18} color="#FFF" />
+            <Text style={styles.deleteToolbarConfirmText}>Eliminar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.listContent}
@@ -488,15 +618,36 @@ export default function AccountsScreen() {
           cuentas.map((cuenta) => {
             const ganancia = calcularGanancia(cuenta.precio_compra || 0, cuenta.precio_venta || 0);
             const bgColor = getCardBackgroundColor(cuenta.estado_principal || 'Disponible');
+            const isSelected = selectedForDelete.has(cuenta.id);
+            const isDeleting = deletingIds.has(cuenta.id);
             
             return (
               <TouchableOpacity 
                 key={cuenta.id}
-                style={[styles.accountCard, { backgroundColor: bgColor }]}
+                style={[
+                  styles.accountCard, 
+                  { backgroundColor: bgColor },
+                  isSelected && styles.accountCardSelected,
+                  isDeleting && styles.accountCardDeleting,
+                ]}
                 onPress={() => abrirEdicion(cuenta)}
+                onLongPress={() => {
+                  if (!deleteMode) {
+                    setDeleteMode(true);
+                    setSelectedForDelete(new Set([cuenta.id]));
+                  }
+                }}
                 activeOpacity={0.7}
+                disabled={isDeleting}
               >
                 <View style={styles.cardContent}>
+                  {/* Select checkbox in delete mode */}
+                  {deleteMode && (
+                    <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                      {isSelected && <Ionicons name="checkmark" size={14} color="#FFF" />}
+                    </View>
+                  )}
+
                   {cuenta.foto_base64 ? (
                     <Image source={{ uri: cuenta.foto_base64 }} style={styles.accountPhoto} />
                   ) : (
@@ -508,21 +659,62 @@ export default function AccountsScreen() {
                   <View style={styles.accountInfo}>
                     <View style={styles.titleRow}>
                       <Text style={styles.accountTitle} numberOfLines={1}>{cuenta.titulo}</Text>
-                      <View style={styles.regionBadge}>
-                        <Text style={styles.regionBadgeText}>{cuenta.region}</Text>
+                      <View style={styles.badgesRow}>
+                        {cuenta.estados_secundarios && cuenta.estados_secundarios.length > 0 && (
+                          cuenta.estados_secundarios.map((es) => (
+                            <View key={es} style={styles.estadoSecBadge}>
+                              <Text style={styles.estadoSecBadgeText}>{es}</Text>
+                            </View>
+                          ))
+                        )}
+                        <View style={styles.regionBadge}>
+                          <Text style={styles.regionBadgeText}>{cuenta.region}</Text>
+                        </View>
                       </View>
                     </View>
                     <Text style={styles.accountEmail} numberOfLines={1}>{cuenta.email}</Text>
                     
                     <View style={styles.pricesRow}>
-                      <Text style={styles.priceLabel}>Compra: <Text style={styles.priceValue}>S/ {cuenta.precio_compra?.toFixed(2) || '0.00'}</Text></Text>
-                      <Text style={styles.priceLabel}>Venta: <Text style={styles.priceValueVenta}>S/ {cuenta.precio_venta?.toFixed(2) || '0.00'}</Text></Text>
+                      <Text style={styles.priceLabel}>C: <Text style={styles.priceValue}>S/{cuenta.precio_compra?.toFixed(2) || '0.00'}</Text></Text>
+                      <Text style={styles.priceLabel}>V: <Text style={styles.priceValueVenta}>S/{cuenta.precio_venta?.toFixed(2) || '0.00'}</Text></Text>
+                      <Text style={[styles.ganancia, ganancia >= 0 ? styles.gananciaPositiva : styles.gananciaNegativa]}>
+                        G: S/{ganancia.toFixed(2)}
+                      </Text>
                     </View>
-                    
-                    <Text style={[styles.ganancia, ganancia >= 0 ? styles.gananciaPositiva : styles.gananciaNegativa]}>
-                      Ganancia: S/ {ganancia.toFixed(2)}
-                    </Text>
+
+                    {(cuenta.vendedor || cuenta.comprador) && (
+                      <View style={styles.tradeInfoRow}>
+                        {cuenta.vendedor ? (
+                          <Text style={styles.tradeInfoText} numberOfLines={1}>
+                            <Text style={styles.tradeInfoLabel}>Vendedor: </Text>{cuenta.vendedor}
+                          </Text>
+                        ) : null}
+                        {cuenta.comprador ? (
+                          <Text style={styles.tradeInfoText} numberOfLines={1}>
+                            <Text style={styles.tradeInfoLabel}>Comprador: </Text>{cuenta.comprador}
+                          </Text>
+                        ) : null}
+                      </View>
+                    )}
                   </View>
+
+                  {/* Delete button on card - always visible */}
+                  {!deleteMode && (
+                    <TouchableOpacity
+                      style={styles.cardDeleteButton}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        handleDeleteSingle(cuenta.id, cuenta.titulo);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      {isDeleting ? (
+                        <ActivityIndicator size="small" color={colors.error} />
+                      ) : (
+                        <Ionicons name="trash-outline" size={18} color={colors.error} />
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -536,9 +728,12 @@ export default function AccountsScreen() {
         )}
       </ScrollView>
 
-      <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
-        <Ionicons name="add" size={28} color="#FFFFFF" />
-      </TouchableOpacity>
+      {/* FAB buttons */}
+      {!deleteMode && (
+        <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
+          <Ionicons name="add" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
 
       <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
@@ -561,7 +756,7 @@ const styles = StyleSheet.create({
   header: { 
     backgroundColor: colors.primary, 
     paddingTop: 50, 
-    paddingBottom: 12,
+    paddingBottom: 10,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -588,45 +783,122 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: { 
-    fontSize: 18, 
+    fontSize: 16, 
     fontWeight: '900', 
     color: '#FFFFFF',
     letterSpacing: 1,
   },
   subtitle: {
-    fontSize: 9,
+    fontSize: 8,
     color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 2,
+    marginTop: 1,
     fontStyle: 'italic',
   },
+  // Delete toolbar
+  deleteToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FECACA',
+  },
+  deleteToolbarCancel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 4,
+  },
+  deleteToolbarCancelText: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  deleteToolbarCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.error,
+  },
+  deleteToolbarConfirm: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.error,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  deleteToolbarConfirmDisabled: {
+    opacity: 0.4,
+  },
+  deleteToolbarConfirmText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFF',
+  },
   scrollView: { flex: 1 },
-  listContent: { padding: 12, paddingBottom: 100 },
+  listContent: { padding: 10, paddingBottom: 100 },
   accountCard: { 
     borderRadius: 10, 
-    padding: 10, 
-    marginBottom: 8,
+    padding: 8, 
+    marginBottom: 6,
     elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 1,
   },
-  cardContent: { flexDirection: 'row', gap: 10 },
-  accountPhoto: { width: 60, height: 60, borderRadius: 30 },
+  accountCardSelected: {
+    borderWidth: 2,
+    borderColor: colors.error,
+  },
+  accountCardDeleting: {
+    opacity: 0.4,
+  },
+  cardContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: colors.error,
+  },
+  accountPhoto: { width: 50, height: 50, borderRadius: 25 },
   accountPhotoPlaceholder: { backgroundColor: colors.chipInactive, alignItems: 'center', justifyContent: 'center' },
   accountInfo: { flex: 1 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  accountTitle: { fontSize: 14, fontWeight: '600', color: colors.text, flex: 1, marginRight: 6 },
-  regionBadge: { backgroundColor: colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  regionBadgeText: { fontSize: 9, fontWeight: 'bold', color: '#FFFFFF' },
-  accountEmail: { fontSize: 11, color: colors.textSecondary, marginBottom: 4 },
-  pricesRow: { flexDirection: 'row', gap: 10, marginBottom: 3 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2, gap: 4 },
+  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, alignItems: 'center' },
+  accountTitle: { fontSize: 13, fontWeight: '600', color: colors.text, flex: 1, marginRight: 4 },
+  regionBadge: { backgroundColor: colors.primary, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3 },
+  regionBadgeText: { fontSize: 8, fontWeight: 'bold', color: '#FFFFFF' },
+  estadoSecBadge: { backgroundColor: '#8B5CF6', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 },
+  estadoSecBadgeText: { fontSize: 7, fontWeight: '600', color: '#FFFFFF' },
+  accountEmail: { fontSize: 10, color: colors.textSecondary, marginBottom: 3 },
+  pricesRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   priceLabel: { fontSize: 10, color: colors.textMuted },
   priceValue: { fontWeight: '600', color: colors.text },
   priceValueVenta: { fontWeight: '600', color: colors.success },
-  ganancia: { fontSize: 11, fontWeight: 'bold', marginTop: 1 },
+  ganancia: { fontSize: 10, fontWeight: 'bold' },
   gananciaPositiva: { color: colors.success },
   gananciaNegativa: { color: colors.error },
+  tradeInfoRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  tradeInfoText: { fontSize: 9, color: colors.textSecondary, flex: 1 },
+  tradeInfoLabel: { fontWeight: '600', color: colors.textMuted },
+  cardDeleteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 60 },
   emptyText: { fontSize: 18, fontWeight: '600', color: colors.text, marginTop: 16 },
   emptySubtext: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
@@ -652,6 +924,7 @@ const styles = StyleSheet.create({
   regionButton: { backgroundColor: colors.chipInactive, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   regionButtonActive: { backgroundColor: colors.primary },
   regionText: { fontSize: 13, fontWeight: '600', color: colors.chipTextInactive },
+  regionTextActive: { color: colors.chipTextActive },
   estadoPrincipalContainer: { flexDirection: 'row', gap: 8 },
   estadoPrincipalButton: { flex: 1, backgroundColor: colors.chipInactive, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   estadoPrincipalActive: { backgroundColor: colors.primary },
@@ -665,7 +938,7 @@ const styles = StyleSheet.create({
   saveButton: { backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 10, alignItems: 'center', marginTop: 20 },
   saveButtonDisabled: { opacity: 0.5 },
   saveButtonText: { fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' },
-  deleteButton: {
+  deleteButtonModal: {
     flexDirection: 'row',
     backgroundColor: colors.error,
     paddingVertical: 14,

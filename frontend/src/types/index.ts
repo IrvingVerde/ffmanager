@@ -34,7 +34,7 @@ export interface FinancialSummary {
 
 export type PlataformaType = 'Facebook' | 'Google' | 'VK' | 'Twitter' | 'Otro';
 export type EstadoPrincipal = 'Disponible' | 'Vendida' | 'Reservada';
-export type EstadoSecundario = 'En Proceso' | 'Correo Confirmado' | 'Correo Perdido';
+export type EstadoSecundario = 'En Proceso' | 'Correo Confirmado' | 'Correo Perdido' | 'Pura';
 
 export interface Account {
   id: string;
@@ -51,6 +51,8 @@ export interface Account {
   estados_secundarios: EstadoSecundario[];
   region: string;
   notas?: string;
+  vendedor?: string;
+  comprador?: string;
   fecha_compra?: string;
   fecha_venta?: string;
   created_at: string;
@@ -71,6 +73,8 @@ export interface AccountCreate {
   estados_secundarios: EstadoSecundario[];
   region: string;
   notas?: string;
+  vendedor?: string;
+  comprador?: string;
   fecha_compra?: string;
   fecha_venta?: string;
 }

@@ -68,9 +68,11 @@ class AccountCreate(BaseModel):
     precio_compra: float = 0.0
     precio_venta: float = 0.0
     estado_principal: Literal["Disponible", "Vendida", "Reservada"] = "Disponible"
-    estados_secundarios: List[str] = []  # ["En Proceso", "Correo Confirmado", "Correo Perdido"]
+    estados_secundarios: List[str] = []  # ["En Proceso", "Correo Confirmado", "Correo Perdido", "Pura"]
     region: str = "SUR"
     notas: Optional[str] = None
+    vendedor: Optional[str] = None
+    comprador: Optional[str] = None
     fecha_compra: Optional[datetime] = None
     fecha_venta: Optional[datetime] = None
 
@@ -89,6 +91,8 @@ class Account(BaseModel):
     estados_secundarios: List[str] = []
     region: str
     notas: Optional[str] = None
+    vendedor: Optional[str] = None
+    comprador: Optional[str] = None
     fecha_compra: Optional[datetime] = None
     fecha_venta: Optional[datetime] = None
     created_at: datetime
