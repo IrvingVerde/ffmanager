@@ -20,14 +20,15 @@ import {
   obtenerCuentas, 
   crearCuenta,
   actualizarCuenta,
+  eliminarCuenta,
 } from '../services/api';
-import { guardarCuentaLocal, obtenerCuentasLocales } from '../services/database';
+import { guardarCuentaLocal, obtenerCuentasLocales, eliminarCuentaLocal } from '../services/database';
 import { Ionicons } from '@expo/vector-icons';
 import { PlataformaType, EstadoPrincipal, EstadoSecundario, AccountCreate } from '../types';
 import * as ImagePicker from 'expo-image-picker';
 
 export default function AccountsScreen() {
-  const { cuentas, setCuentas, agregarCuenta, actualizarCuentaStore, isOnline } = useStore();
+  const { cuentas, setCuentas, agregarCuenta, actualizarCuentaStore, eliminarCuentaStore, isOnline } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -184,6 +185,37 @@ export default function AccountsScreen() {
     }
   };
 
+  const handleEliminarCuenta = async () => {
+    if (!editingId) return;
+
+    Alert.alert(
+      'Confirmar',
+      '¿Estás seguro de eliminar esta cuenta?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await eliminarCuenta(editingId);
+              eliminarCuentaStore(editingId);
+              await eliminarCuentaLocal(editingId);
+              
+              resetForm();
+              setEditModalVisible(false);
+              
+              Alert.alert('Éxito', 'Cuenta eliminada');
+            } catch (error) {
+              console.error('Error eliminando cuenta:', error);
+              Alert.alert('Error', 'No se pudo eliminar la cuenta');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const resetForm = () => {
     setTitulo('');
     setEmail('');
@@ -232,11 +264,11 @@ export default function AccountsScreen() {
   const getCardBackgroundColor = (estado: string) => {
     switch (estado) {
       case 'Vendida':
-        return '#FFE5E5'; // Rojo claro
+        return '#FFE5E5';
       case 'Disponible':
-        return '#E5F8E5'; // Verde claro
+        return '#E5F8E5';
       case 'Reservada':
-        return '#FFE8D5'; // Naranja claro
+        return '#FFE8D5';
       default:
         return colors.backgroundCard;
     }
@@ -420,22 +452,29 @@ export default function AccountsScreen() {
             {savingAccount ? 'Guardando...' : esEdicion ? 'Actualizar' : 'Guardar'}
           </Text>
         </TouchableOpacity>
+
+        {esEdicion && (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={handleEliminarCuenta}
+          >
+            <Ionicons name="trash" size={20} color="#FFFFFF" />
+            <Text style={styles.deleteButtonText}>Eliminar Cuenta</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </ScrollView>
   );
 
   return (
     <View style={styles.container}>
-      {/* Header con diseño abstracto minimalista */}
+      {/* Header compacto */}
       <View style={styles.header}>
-        {/* Diseño abstracto de fondo */}
         <View style={styles.abstractShape1} />
         <View style={styles.abstractShape2} />
-        <View style={styles.abstractShape3} />
         
         <View style={styles.headerContent}>
-          <Text style={styles.title}>FREE FIRE</Text>
-          <Text style={styles.titleSecondary}>APP MANAGER</Text>
+          <Text style={styles.title}>FREE FIRE APP MANAGER</Text>
           <Text style={styles.subtitle}>By: Irving</Text>
         </View>
       </View>
@@ -462,7 +501,7 @@ export default function AccountsScreen() {
                     <Image source={{ uri: cuenta.foto_base64 }} style={styles.accountPhoto} />
                   ) : (
                     <View style={[styles.accountPhoto, styles.accountPhotoPlaceholder]}>
-                      <Ionicons name="person" size={24} color={colors.textMuted} />
+                      <Ionicons name="person" size={20} color={colors.textMuted} />
                     </View>
                   )}
 
@@ -521,91 +560,74 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   header: { 
     backgroundColor: colors.primary, 
-    paddingTop: 60, 
-    paddingBottom: 24,
+    paddingTop: 50, 
+    paddingBottom: 12,
     position: 'relative',
     overflow: 'hidden',
   },
   abstractShape1: {
     position: 'absolute',
-    top: -40,
-    right: -30,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    top: -20,
+    right: -20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   abstractShape2: {
     position: 'absolute',
-    bottom: -20,
-    left: -20,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  abstractShape3: {
-    position: 'absolute',
-    top: 20,
-    left: '30%',
+    bottom: -10,
+    left: -10,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   headerContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
   title: { 
-    fontSize: 32, 
+    fontSize: 18, 
     fontWeight: '900', 
     color: '#FFFFFF',
-    letterSpacing: 2,
-  },
-  titleSecondary: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
     letterSpacing: 1,
-    marginTop: -4,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 9,
     color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 6,
+    marginTop: 2,
     fontStyle: 'italic',
-    letterSpacing: 0.5,
   },
   scrollView: { flex: 1 },
-  listContent: { padding: 16, paddingTop: 20, paddingBottom: 100 },
+  listContent: { padding: 12, paddingBottom: 100 },
   accountCard: { 
-    borderRadius: 12, 
-    padding: 12, 
-    marginBottom: 12,
-    elevation: 2,
+    borderRadius: 10, 
+    padding: 10, 
+    marginBottom: 8,
+    elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
   },
-  cardContent: { flexDirection: 'row', gap: 12 },
-  accountPhoto: { width: 70, height: 70, borderRadius: 35 },
+  cardContent: { flexDirection: 'row', gap: 10 },
+  accountPhoto: { width: 60, height: 60, borderRadius: 30 },
   accountPhotoPlaceholder: { backgroundColor: colors.chipInactive, alignItems: 'center', justifyContent: 'center' },
   accountInfo: { flex: 1 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  accountTitle: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1, marginRight: 8 },
-  regionBadge: { backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  regionBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#FFFFFF' },
-  accountEmail: { fontSize: 13, color: colors.textSecondary, marginBottom: 6 },
-  pricesRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
-  priceLabel: { fontSize: 11, color: colors.textMuted },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  accountTitle: { fontSize: 14, fontWeight: '600', color: colors.text, flex: 1, marginRight: 6 },
+  regionBadge: { backgroundColor: colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  regionBadgeText: { fontSize: 9, fontWeight: 'bold', color: '#FFFFFF' },
+  accountEmail: { fontSize: 11, color: colors.textSecondary, marginBottom: 4 },
+  pricesRow: { flexDirection: 'row', gap: 10, marginBottom: 3 },
+  priceLabel: { fontSize: 10, color: colors.textMuted },
   priceValue: { fontWeight: '600', color: colors.text },
   priceValueVenta: { fontWeight: '600', color: colors.success },
-  ganancia: { fontSize: 13, fontWeight: 'bold', marginTop: 2 },
+  ganancia: { fontSize: 11, fontWeight: 'bold', marginTop: 1 },
   gananciaPositiva: { color: colors.success },
   gananciaNegativa: { color: colors.error },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 80 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 60 },
   emptyText: { fontSize: 18, fontWeight: '600', color: colors.text, marginTop: 16 },
   emptySubtext: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
   fab: { position: 'absolute', right: 20, bottom: 80, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 6 },
@@ -615,7 +637,7 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 22, fontWeight: 'bold', color: colors.text },
   label: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, marginTop: 12 },
-  photoSelector: { width: '100%', height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 8 },
+  photoSelector: { width: '100%', height: 160, borderRadius: 12, overflow: 'hidden', marginBottom: 8 },
   photoPreview: { width: '100%', height: '100%' },
   photoPlaceholder: { width: '100%', height: '100%', backgroundColor: colors.chipInactive, alignItems: 'center', justifyContent: 'center' },
   photoPlaceholderText: { marginTop: 8, fontSize: 13, color: colors.textMuted },
@@ -643,4 +665,19 @@ const styles = StyleSheet.create({
   saveButton: { backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 10, alignItems: 'center', marginTop: 20 },
   saveButtonDisabled: { opacity: 0.5 },
   saveButtonText: { fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' },
+  deleteButton: {
+    flexDirection: 'row',
+    backgroundColor: colors.error,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    gap: 8,
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
 });
