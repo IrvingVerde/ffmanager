@@ -1,26 +1,26 @@
 export const colors = {
-  // Fondo - Similar a las imágenes de referencia
-  background: '#F5F6FA',
-  backgroundSecondary: '#FFFFFF',
-  backgroundCard: '#FFFFFF',
+  // Fondo oscuro premium
+  background: '#151520',
+  backgroundSecondary: '#1C1C2E',
+  backgroundCard: '#222236',
   
-  // Primarios - Azul de la app de referencia
-  primary: '#2E4A9E',
-  primaryLight: '#4A6BCA',
-  primaryDark: '#1E3675',
+  // Primarios - Dorado/Ámbar
+  primary: '#C79727',
+  primaryLight: '#E0B44A',
+  primaryDark: '#976D15',
   
   // Secundarios
   secondary: '#10B981',
   secondaryLight: '#34D399',
   
   // Acentos
-  accent: '#F59E0B',
-  accentLight: '#FBBF24',
+  accent: '#C79727',
+  accentLight: '#E0B44A',
   
-  // Texto - Modo claro
-  text: '#1F2937',
-  textSecondary: '#6B7280',
-  textMuted: '#9CA3AF',
+  // Texto - Modo oscuro
+  text: '#F0F0F5',
+  textSecondary: '#A0A0B8',
+  textMuted: '#6B6B80',
   
   // Estados
   success: '#10B981',
@@ -28,21 +28,25 @@ export const colors = {
   error: '#EF4444',
   info: '#3B82F6',
   
-  // Categorías financieras - Como en la referencia
-  ingreso: '#10B981',  // Verde
-  gasto: '#EF4444',     // Rojo
+  // Categorías financieras
+  ingreso: '#10B981',
+  gasto: '#EF4444',
   inversion: '#3B82F6',
   
   // Bordes
-  border: '#E5E7EB',
-  borderLight: '#F3F4F6',
+  border: '#2E2E45',
+  borderLight: '#383850',
   
   // Overlay
-  overlay: 'rgba(0, 0, 0, 0.5)',
+  overlay: 'rgba(0, 0, 0, 0.7)',
   
   // Chips y filtros
-  chipActive: '#2E4A9E',
-  chipInactive: '#F3F4F6',
+  chipActive: '#C79727',
+  chipInactive: '#2A2A40',
   chipTextActive: '#FFFFFF',
-  chipTextInactive: '#6B7280',
+  chipTextInactive: '#8888A0',
+  
+  // Gradientes simulados
+  headerGradientStart: '#1A1A2E',
+  headerGradientEnd: '#21202E',
 };

@@ -13,33 +13,26 @@ import {
   Alert,
 } from 'react-native';
 import { colors } from '../utils/colors';
-import { TransactionItem } from '../components/TransactionItem';
 import { useStore } from '../store/useStore';
 import { 
   obtenerTransacciones, 
   crearTransaccion,
-  actualizarTransaccion,
   eliminarTransaccion,
-  obtenerResumenFinanciero 
 } from '../services/api';
 import { guardarTransaccionLocal, obtenerTransaccionesLocales, eliminarTransaccionLocal } from '../services/database';
 import { Ionicons } from '@expo/vector-icons';
-import { TipoTransaccion, MonedaType, TransactionCreate } from '../types';
+import { TipoTransaccion, TransactionCreate } from '../types';
 
 export default function TransactionsScreen() {
-  const { transacciones, setTransacciones, agregarTransaccion, eliminarTransaccionStore, isOnline, setResumenFinanciero } = useStore();
+  const { transacciones, setTransacciones, agregarTransaccion, eliminarTransaccionStore, isOnline } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [editModalVisible, setEditModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
   
-  // Form state
+  // Simple form - only monto and descripcion
   const [tipo, setTipo] = useState<TipoTransaccion>('ingreso');
   const [monto, setMonto] = useState('');
-  const [moneda, setMoneda] = useState<MonedaType>('PEN');
-  const [notas, setNotas] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [descripcion, setDescripcion] = useState('');
 
   const cargarTransacciones = async () => {
     try {
@@ -71,305 +64,218 @@ export default function TransactionsScreen() {
     cargarTransacciones();
   };
 
-  const handleCrearTransaccion = async () => {
+  const handleGuardar = async () => {
     if (!monto || parseFloat(monto) <= 0) {
-      Alert.alert('Error', 'Ingresa un monto válido');
+      if (Platform.OS === 'web') {
+        window.alert('Ingresa un monto válido');
+      } else {
+        Alert.alert('Error', 'Ingresa un monto válido');
+      }
       return;
     }
 
     setLoading(true);
     try {
-      const nuevaTransaccion: TransactionCreate = {
+      const nueva: TransactionCreate = {
         tipo,
         monto: parseFloat(monto),
-        moneda,
-        fecha: selectedDate.toISOString(),
-        notas: notas || undefined,
+        moneda: 'PEN',
+        fecha: new Date().toISOString(),
+        notas: descripcion || undefined,
       };
 
-      const transaccionCreada = await crearTransaccion(nuevaTransaccion);
-      agregarTransaccion(transaccionCreada);
-      await guardarTransaccionLocal(transaccionCreada);
+      const creada = await crearTransaccion(nueva);
+      agregarTransaccion(creada);
+      await guardarTransaccionLocal(creada);
       
-      const resumen = await obtenerResumenFinanciero();
-      setResumenFinanciero(resumen);
-      
-      resetForm();
+      setMonto('');
+      setDescripcion('');
       setModalVisible(false);
-      
-      Alert.alert('Éxito', 'Transacción creada correctamente');
     } catch (error) {
       console.error('Error creando transacción:', error);
-      Alert.alert('Error', 'No se pudo crear la transacción');
+      if (Platform.OS === 'web') {
+        window.alert('No se pudo guardar');
+      } else {
+        Alert.alert('Error', 'No se pudo guardar');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleActualizarTransaccion = async () => {
-    if (!editingId || !monto || parseFloat(monto) <= 0) {
-      Alert.alert('Error', 'Ingresa un monto válido');
-      return;
-    }
+  const handleEliminar = async (id: string) => {
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm('¿Eliminar esta transacción?')
+      : await new Promise<boolean>((resolve) => {
+          Alert.alert('Eliminar', '¿Eliminar esta transacción?', [
+            { text: 'No', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Sí', style: 'destructive', onPress: () => resolve(true) },
+          ]);
+        });
 
-    setLoading(true);
+    if (!confirmed) return;
+
     try {
-      const transaccionActualizada: TransactionCreate = {
-        tipo,
-        monto: parseFloat(monto),
-        moneda,
-        fecha: selectedDate.toISOString(),
-        notas: notas || undefined,
-      };
-
-      await actualizarTransaccion(editingId, transaccionActualizada);
-      await cargarTransacciones();
-      
-      const resumen = await obtenerResumenFinanciero();
-      setResumenFinanciero(resumen);
-      
-      resetForm();
-      setEditModalVisible(false);
-      
-      Alert.alert('Éxito', 'Transacción actualizada');
+      if (isOnline) await eliminarTransaccion(id);
+      eliminarTransaccionStore(id);
+      await eliminarTransaccionLocal(id);
     } catch (error) {
-      console.error('Error actualizando transacción:', error);
-      Alert.alert('Error', 'No se pudo actualizar');
-    } finally {
-      setLoading(false);
+      eliminarTransaccionStore(id);
+      await eliminarTransaccionLocal(id);
     }
   };
 
-  const handleEliminarTransaccion = async () => {
-    if (!editingId) return;
+  // Calculate totals
+  const totalIngresos = transacciones
+    .filter(t => t.tipo === 'ingreso')
+    .reduce((sum, t) => sum + t.monto, 0);
+  const totalGastos = transacciones
+    .filter(t => t.tipo === 'gasto')
+    .reduce((sum, t) => sum + t.monto, 0);
+  const balance = totalIngresos - totalGastos;
 
-    Alert.alert(
-      'Confirmar',
-      '¿Eliminar esta transacción?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await eliminarTransaccion(editingId);
-              eliminarTransaccionStore(editingId);
-              await eliminarTransaccionLocal(editingId);
-              
-              const resumen = await obtenerResumenFinanciero();
-              setResumenFinanciero(resumen);
-              
-              resetForm();
-              setEditModalVisible(false);
-              
-              Alert.alert('Éxito', 'Transacción eliminada');
-            } catch (error) {
-              console.error('Error eliminando:', error);
-              Alert.alert('Error', 'No se pudo eliminar');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const resetForm = () => {
-    setMonto('');
-    setNotas('');
-    setEditingId(null);
-  };
-
-  const abrirEdicion = (trans: any) => {
-    setEditingId(trans.id);
-    setTipo(trans.tipo);
-    setMonto(trans.monto.toString());
-    setMoneda(trans.moneda);
-    setNotas(trans.notas || '');
-    setSelectedDate(new Date(trans.fecha));
-    setEditModalVisible(true);
-  };
-
-  const changeDate = (days: number) => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() + days);
-    setSelectedDate(newDate);
-  };
-
-  const formatDateHeader = (date: Date) => {
-    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    return `${date.getDate().toString().padStart(2, '0')} ${months[date.getMonth()]} ${date.getFullYear()}`;
-  };
-
-  const filteredTransactions = transacciones.filter(trans => {
-    const transDate = new Date(trans.fecha);
-    return transDate.toDateString() === selectedDate.toDateString();
-  });
-
-  const renderFormulario = (esEdicion: boolean) => (
-    <View style={styles.modalContent}>
-      <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>
-          {esEdicion ? 'Editar Transacción' : tipo === 'ingreso' ? 'Nuevo Ingreso' : 'Nuevo Gasto'}
-        </Text>
-        <TouchableOpacity onPress={() => {
-          esEdicion ? setEditModalVisible(false) : setModalVisible(false);
-          resetForm();
-        }}>
-          <Ionicons name="close" size={28} color={colors.text} />
-        </TouchableOpacity>
-      </View>
-
-      {!esEdicion && (
-        <>
-          <Text style={styles.label}>Tipo</Text>
-          <View style={styles.tipoContainer}>
-            <TouchableOpacity
-              style={[styles.tipoButton, tipo === 'ingreso' && styles.tipoButtonIngreso]}
-              onPress={() => setTipo('ingreso')}
-            >
-              <Text style={[styles.tipoText, tipo === 'ingreso' && styles.tipoTextActive]}>Ingreso</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tipoButton, tipo === 'gasto' && styles.tipoButtonGasto]}
-              onPress={() => setTipo('gasto')}
-            >
-              <Text style={[styles.tipoText, tipo === 'gasto' && styles.tipoTextActive]}>Gasto</Text>
-            </TouchableOpacity>
-          </View>
-        </>
-      )}
-
-      <Text style={styles.label}>Moneda</Text>
-      <View style={styles.monedaContainer}>
-        <TouchableOpacity
-          style={[styles.monedaButton, moneda === 'PEN' && styles.monedaButtonActive]}
-          onPress={() => setMoneda('PEN')}
-        >
-          <Text style={[styles.monedaText, moneda === 'PEN' && styles.monedaTextActive]}>PEN (S/)</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.monedaButton, moneda === 'USD' && styles.monedaButtonActive]}
-          onPress={() => setMoneda('USD')}
-        >
-          <Text style={[styles.monedaText, moneda === 'USD' && styles.monedaTextActive]}>USD ($)</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.label}>Monto</Text>
-      <TextInput
-        style={styles.input}
-        value={monto}
-        onChangeText={setMonto}
-        placeholder="0.00"
-        placeholderTextColor={colors.textMuted}
-        keyboardType="decimal-pad"
-      />
-
-      <Text style={styles.label}>Notas (opcional)</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        value={notas}
-        onChangeText={setNotas}
-        placeholder="Descripción..."
-        placeholderTextColor={colors.textMuted}
-        multiline
-        numberOfLines={3}
-      />
-
-      <TouchableOpacity
-        style={[
-          styles.saveButton, 
-          { backgroundColor: tipo === 'ingreso' ? colors.ingreso : colors.gasto },
-          loading && styles.saveButtonDisabled
-        ]}
-        onPress={esEdicion ? handleActualizarTransaccion : handleCrearTransaccion}
-        disabled={loading}
-      >
-        <Text style={styles.saveButtonText}>
-          {loading ? 'Guardando...' : esEdicion ? 'Actualizar' : `Guardar ${tipo === 'ingreso' ? 'Ingreso' : 'Gasto'}`}
-        </Text>
-      </TouchableOpacity>
-
-      {esEdicion && (
-        <TouchableOpacity style={styles.deleteButton} onPress={handleEliminarTransaccion}>
-          <Ionicons name="trash" size={20} color="#FFFFFF" />
-          <Text style={styles.deleteButtonText}>Eliminar</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+  const formatMonto = (n: number) => `S/ ${n.toFixed(2)}`;
 
   return (
     <View style={styles.container}>
+      {/* Header con resumen */}
       <View style={styles.header}>
-        <Text style={styles.title}>Finanzas</Text>
+        <View style={styles.headerWave1} />
+        <View style={styles.headerWave2} />
+        <View style={styles.headerWave3} />
+
+        <Text style={styles.headerTitle}>Finanzas</Text>
+        <Text style={styles.headerSubtitle}>Resumen General</Text>
+
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Ingresos</Text>
+            <Text style={[styles.summaryValue, { color: colors.ingreso }]}>{formatMonto(totalIngresos)}</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Gastos</Text>
+            <Text style={[styles.summaryValue, { color: colors.gasto }]}>{formatMonto(totalGastos)}</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Balance</Text>
+            <Text style={[styles.summaryValue, { color: balance >= 0 ? colors.ingreso : colors.gasto }]}>
+              {formatMonto(balance)}
+            </Text>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.dateSelector}>
-        <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateButton}>
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        
-        <Text style={styles.dateText}>{formatDateHeader(selectedDate)}</Text>
-        
-        <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateButton}>
-          <Ionicons name="chevron-forward" size={24} color={colors.text} />
-        </TouchableOpacity>
-      </View>
-
+      {/* Transaction list */}
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        <View style={styles.content}>
-          {filteredTransactions.length > 0 ? (
-            filteredTransactions.map((trans) => (
-              <TouchableOpacity key={trans.id} onPress={() => abrirEdicion(trans)}>
-                <TransactionItem transaction={trans} />
-              </TouchableOpacity>
-            ))
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="wallet-outline" size={80} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No hay transacciones</Text>
-              <Text style={styles.emptySubtext}>Agrega un gasto o ingreso</Text>
-            </View>
-          )}
-        </View>
+        {transacciones.length > 0 ? (
+          transacciones.map((trans) => {
+            const isIngreso = trans.tipo === 'ingreso';
+            return (
+              <View key={trans.id} style={styles.transCard}>
+                <View style={[styles.transIndicator, { backgroundColor: isIngreso ? colors.ingreso : colors.gasto }]} />
+                <View style={styles.transInfo}>
+                  <Text style={[styles.transMonto, { color: isIngreso ? colors.ingreso : colors.gasto }]}>
+                    {isIngreso ? '+' : '-'} S/ {trans.monto.toFixed(2)}
+                  </Text>
+                  {trans.notas ? (
+                    <Text style={styles.transDesc} numberOfLines={2}>{trans.notas}</Text>
+                  ) : (
+                    <Text style={styles.transDescEmpty}>{isIngreso ? 'Ingreso' : 'Gasto'}</Text>
+                  )}
+                  <Text style={styles.transDate}>
+                    {new Date(trans.fecha).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.transDeleteBtn}
+                  onPress={() => handleEliminar(trans.id)}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.gasto} />
+                </TouchableOpacity>
+              </View>
+            );
+          })
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="wallet-outline" size={60} color={colors.textMuted} />
+            <Text style={styles.emptyText}>Sin transacciones</Text>
+            <Text style={styles.emptySubtext}>Usa los botones para agregar</Text>
+          </View>
+        )}
       </ScrollView>
 
-      <TouchableOpacity 
+      {/* FAB Buttons */}
+      <TouchableOpacity
         style={styles.fabGasto}
-        onPress={() => {
-          setTipo('gasto');
-          setModalVisible(true);
-        }}
+        onPress={() => { setTipo('gasto'); setModalVisible(true); }}
       >
-        <Ionicons name="remove" size={24} color="#FFFFFF" />
+        <Ionicons name="remove" size={22} color="#FFF" />
         <Text style={styles.fabText}>Gasto</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.fabIngreso}
-        onPress={() => {
-          setTipo('ingreso');
-          setModalVisible(true);
-        }}
+        onPress={() => { setTipo('ingreso'); setModalVisible(true); }}
       >
-        <Ionicons name="add" size={24} color="#FFFFFF" />
+        <Ionicons name="add" size={22} color="#FFF" />
         <Text style={styles.fabText}>Ingreso</Text>
       </TouchableOpacity>
 
+      {/* Modal simple */}
       <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
-          {renderFormulario(false)}
-        </KeyboardAvoidingView>
-      </Modal>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: tipo === 'ingreso' ? colors.ingreso : colors.gasto }]}>
+                {tipo === 'ingreso' ? 'Nuevo Ingreso' : 'Nuevo Gasto'}
+              </Text>
+              <TouchableOpacity onPress={() => { setModalVisible(false); setMonto(''); setDescripcion(''); }}>
+                <Ionicons name="close" size={28} color={colors.text} />
+              </TouchableOpacity>
+            </View>
 
-      <Modal visible={editModalVisible} animationType="slide" transparent={true} onRequestClose={() => setEditModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
-          {renderFormulario(true)}
+            <Text style={styles.label}>Monto (S/)</Text>
+            <TextInput
+              style={styles.montoInput}
+              value={monto}
+              onChangeText={setMonto}
+              placeholder="0.00"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="decimal-pad"
+              autoFocus
+            />
+
+            <Text style={styles.label}>Descripción</Text>
+            <TextInput
+              style={styles.descInput}
+              value={descripcion}
+              onChangeText={setDescripcion}
+              placeholder="Motivo..."
+              placeholderTextColor={colors.textMuted}
+              multiline
+              numberOfLines={2}
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                { backgroundColor: tipo === 'ingreso' ? colors.ingreso : colors.gasto },
+                loading && styles.saveButtonDisabled,
+              ]}
+              onPress={handleGuardar}
+              disabled={loading}
+            >
+              <Text style={styles.saveButtonText}>
+                {loading ? 'Guardando...' : 'Guardar'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -378,82 +284,194 @@ export default function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: { backgroundColor: colors.primary, padding: 20, paddingTop: 60, paddingBottom: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#FFFFFF' },
-  dateSelector: {
+  
+  // Header premium
+  header: {
+    backgroundColor: colors.backgroundSecondary,
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    position: 'relative',
+    overflow: 'hidden',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerWave1: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(199, 151, 39, 0.08)',
+  },
+  headerWave2: {
+    position: 'absolute',
+    bottom: -20,
+    left: -20,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(199, 151, 39, 0.06)',
+  },
+  headerWave3: {
+    position: 'absolute',
+    top: 20,
+    left: 60,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(199, 151, 39, 0.04)',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.primary,
+    letterSpacing: 1,
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+    marginBottom: 16,
+  },
+  summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: colors.backgroundCard,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderRadius: 14,
+    padding: 14,
   },
-  dateButton: { padding: 8 },
-  dateText: { fontSize: 18, fontWeight: '600', color: colors.text },
+  summaryItem: { flex: 1, alignItems: 'center' },
+  summaryDivider: { width: 1, height: 30, backgroundColor: colors.border },
+  summaryLabel: { fontSize: 10, color: colors.textMuted, marginBottom: 4, textTransform: 'uppercase', fontWeight: '600', letterSpacing: 0.5 },
+  summaryValue: { fontSize: 14, fontWeight: '800' },
+
+  // List
   scrollView: { flex: 1 },
-  content: { padding: 20, paddingBottom: 100 },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 80 },
+  listContent: { padding: 14, paddingBottom: 120 },
+  
+  // Transaction card
+  transCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundCard,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  transIndicator: {
+    width: 4,
+    height: 36,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  transInfo: { flex: 1 },
+  transMonto: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  transDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  transDescEmpty: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  transDate: {
+    fontSize: 9,
+    color: colors.textMuted,
+    marginTop: 3,
+  },
+  transDeleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Empty
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 60 },
   emptyText: { fontSize: 18, fontWeight: '600', color: colors.text, marginTop: 16 },
-  emptySubtext: { fontSize: 14, color: colors.textSecondary, marginTop: 8, textAlign: 'center' },
+  emptySubtext: { fontSize: 13, color: colors.textSecondary, marginTop: 6 },
+
+  // FABs
   fabGasto: {
     position: 'absolute',
     right: 20,
-    bottom: 160,
+    bottom: 140,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.gasto,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingVertical: 12,
     borderRadius: 24,
-    elevation: 6,
-    gap: 8,
+    elevation: 8,
+    gap: 6,
   },
   fabIngreso: {
     position: 'absolute',
     right: 20,
-    bottom: 90,
+    bottom: 80,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.ingreso,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingVertical: 12,
     borderRadius: 24,
-    elevation: 6,
-    gap: 8,
+    elevation: 8,
+    gap: 6,
   },
-  fabText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  fabText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+
+  // Modal
   modalContainer: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: colors.backgroundCard, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: colors.text },
-  label: { fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 8, marginTop: 16 },
-  tipoContainer: { flexDirection: 'row', gap: 8 },
-  tipoButton: { flex: 1, backgroundColor: colors.chipInactive, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  tipoButtonIngreso: { backgroundColor: colors.ingreso },
-  tipoButtonGasto: { backgroundColor: colors.gasto },
-  tipoText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
-  tipoTextActive: { color: '#FFFFFF' },
-  monedaContainer: { flexDirection: 'row', gap: 8 },
-  monedaButton: { flex: 1, backgroundColor: colors.chipInactive, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  monedaButtonActive: { backgroundColor: colors.primary },
-  monedaText: { fontSize: 14, fontWeight: '600', color: colors.chipTextInactive },
-  monedaTextActive: { color: colors.chipTextActive },
-  input: { backgroundColor: colors.background, borderRadius: 12, padding: 16, fontSize: 16, color: colors.text, borderWidth: 1, borderColor: colors.border },
-  textArea: { minHeight: 80, textAlignVertical: 'top' },
-  saveButton: { paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginTop: 24 },
-  saveButtonDisabled: { opacity: 0.5 },
-  saveButtonText: { fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' },
-  deleteButton: {
-    flexDirection: 'row',
-    backgroundColor: colors.error,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    gap: 8,
+  modalContent: {
+    backgroundColor: colors.backgroundCard,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
   },
-  deleteButtonText: { fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 22, fontWeight: '900' },
+  label: { fontSize: 12, fontWeight: '600', color: colors.textMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  montoInput: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  descInput: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 15,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 60,
+    textAlignVertical: 'top',
+    marginBottom: 8,
+  },
+  saveButton: {
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  saveButtonDisabled: { opacity: 0.5 },
+  saveButtonText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
 });

@@ -10,7 +10,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: colors.backgroundCard,
+          backgroundColor: colors.backgroundSecondary,
           borderTopColor: colors.border,
           borderTopWidth: 1,
           height: 60,
