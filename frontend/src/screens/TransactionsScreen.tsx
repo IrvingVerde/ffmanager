@@ -381,26 +381,6 @@ export default function TransactionsScreen() {
         <View style={styles.headerWave3} />
 
         <Text style={styles.headerTitle}>Finanzas</Text>
-        <Text style={styles.headerSubtitle}>Resumen General</Text>
-
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Ingresos</Text>
-            <Text style={[styles.summaryValue, { color: colors.ingreso }]}>{formatMonto(totalIngresos)}</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Gastos</Text>
-            <Text style={[styles.summaryValue, { color: colors.gasto }]}>{formatMonto(totalGastos)}</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Balance</Text>
-            <Text style={[styles.summaryValue, { color: balance >= 0 ? colors.ingreso : colors.gasto }]}>
-              {formatMonto(balance)}
-            </Text>
-          </View>
-        </View>
       </View>
 
       {/* Today card */}
